@@ -143,10 +143,7 @@ def compute_target(v_final, r_lst, mask_lst):
     return torch.tensor(td_target[::-1]).float()
 
 if __name__ == '__main__':
-    if torch.backends.mps.is_available():
-        device= 'mps'
-    else:
-        device = 'cpu'
+    device = 'cpu'
     print('device:{}'.format(device))
     envs = ParallelEnv(n_train_processes)
 
