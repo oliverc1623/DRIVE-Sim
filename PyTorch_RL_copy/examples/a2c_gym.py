@@ -49,9 +49,8 @@ args = parser.parse_args()
 
 dtype = torch.float64
 torch.set_default_dtype(dtype)
-device = torch.device('cuda', index=args.gpu_index) if torch.cuda.is_available() else torch.device('cpu')
-if torch.cuda.is_available():
-    torch.cuda.set_device(args.gpu_index)
+device = ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+device = torch.device(device)
 
 """environment"""
 env = gym.make(args.env_name)
