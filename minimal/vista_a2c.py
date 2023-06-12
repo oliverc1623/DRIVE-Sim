@@ -8,6 +8,7 @@ import torch.multiprocessing as mp
 import numpy as np
 import vista
 import os
+from vista_helper import *
 
 # Hyperparameters
 n_train_processes = 3
@@ -71,7 +72,7 @@ class ActorCritic(nn.Module):
 
 def worker(worker_id, master_end, worker_end):
     master_end.close()  # Forbid worker to use the master end for messaging
-    trace_root = "../trace"
+    trace_root = "trace"
     trace_path = [
         "20210726-154641_lexus_devens_center",
         "20210726-155941_lexus_devens_center_reverse",
@@ -79,6 +80,7 @@ def worker(worker_id, master_end, worker_end):
         "20210726-184956_lexus_devens_center_reverse",
     ]
     trace_path = [os.path.join(trace_root, p) for p in trace_path]
+    print(f"trace path: {trace_path}")
     world = vista.World(trace_path, trace_config={"road_width": 4})
     car = world.spawn_agent(
         config={
