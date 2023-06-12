@@ -3,13 +3,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.distributions import Categorical
+from torch.distributions import Normal
 import torch.multiprocessing as mp
 import numpy as np
 import vista
 import os
 from vista_helper import *
 import matplotlib.pyplot as plt
+import cv2
 
 # Hyperparameters
 n_train_processes = 3
@@ -22,10 +23,10 @@ PRINT_INTERVAL = update_interval * 100
 class ActorCritic(nn.Module):
     def __init__(self):
         super(ActorCritic, self).__init__()
-        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1)
-        self.norm1 = nn.GroupNorm(8, 32)
+        self.conv1 = nn.Conv2d(3, 80, kernel_size=3, stride=1, padding=1)
+        self.norm1 = nn.GroupNorm(8, 80)
         self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(80, 64, kernel_size=3, stride=1, padding=1)
         self.norm2 = nn.GroupNorm(16, 64)
         self.relu2 = nn.ReLU()
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
@@ -37,8 +38,8 @@ class ActorCritic(nn.Module):
         self.conv5 = nn.Conv2d(256, 2, kernel_size=3, stride=1, padding=1)
         self.norm5 = nn.GroupNorm(1, 2)
         self.relu5 = nn.ReLU()
-        self.fc = nn.Linear(2 * 32 * 30, 2)
-        self.fc_v = nn.Linear(3 * 32 * 20, 1)
+        self.fc = nn.Linear(2 * 80 * 80, 2)
+        self.fc_v = nn.Linear(3 * 80 * 80, 1)
 
     def pi(self, x):
         single_image_input = len(x.shape) == 3  # missing 4th batch dimension
@@ -60,7 +61,7 @@ class ActorCritic(nn.Module):
         return mu, sigma
     
     def v(self, x):
-        x = x.view(x.shape[0]*x.shape[1], 3, 30, 32)
+        x = x.view(x.shape[0]*x.shape[1], 3, 80, 80)
         x = self.relu1(self.norm1(self.conv1(x)))
         x = self.relu2(self.norm2(self.conv2(x)))
         x = self.relu3(self.norm3(self.conv3(x)))
@@ -94,14 +95,20 @@ def worker(worker_id, master_end, worker_end):
     display = vista.Display(
         world, display_config={"gui_scale": 2, "vis_full_frame": False}
     )
-
+    print("making new environment")
+    print(f"Worker id: {worker_id}")
+    world.set_seed(worker_id)
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
-            ob, reward, done, truncated, info = env.step(data)
+            # ob, reward, done, truncated, info = env.step(data)
+            vista_step(car, data.item())
+            ob = grab_and_preprocess_obs(car, camera)
+            reward = calculate_reward(car)
+            done = int(check_crash(car))
             if done:
-                ob, info = env.reset()
-            worker_end.send((ob, reward, done, info))
+                vista_reset(world, display)
+            worker_end.send((ob, reward, torch.tensor(done)))
         elif cmd == 'reset':
             # ob, info = env.reset()
             vista_reset(world, display)
@@ -148,8 +155,8 @@ class ParallelEnv:
     def step_wait(self):
         results = [master_end.recv() for master_end in self.master_ends]
         self.waiting = False
-        obs, rews, dones, infos = zip(*results)
-        return np.stack(obs), np.stack(rews), np.stack(dones), np.stack(infos)
+        obs, rews, dones = zip(*results)
+        return torch.stack(obs), torch.stack(rews), torch.stack(dones)
 
     def reset(self):
         for master_end in self.master_ends:
@@ -214,12 +221,19 @@ if __name__ == '__main__':
     while step_idx < max_train_steps:
         s_lst, a_lst, r_lst, mask_lst = list(), list(), list(), list()
         for _ in range(update_interval):
+            print(f"shape: {s.shape}")
+            mu, sigma = model.pi(s)
+            dist = Normal(mu, sigma)
+            a = dist.sample()
+            s_prime, r, done = envs.step(a)
 
-            print(f"collected obs from each worker shape: {s.shape}")
-  
-            prob = model.pi(s)
-            a = Categorical(prob).sample().cpu().numpy()
-            s_prime, r, done, info = envs.step(a)
+            # Plot the stacked image
+            fig, axes = plt.subplots(3, 1, figsize=(8, 8))
+            for i in range(3):
+                axes[i].imshow(s_prime[i])
+                axes[i].axis('off')
+            plt.tight_layout()
+            plt.show()
 
             s_lst.append(s)
             a_lst.append(a)
