@@ -2,6 +2,7 @@ import vista
 import numpy as np
 import torch
 import cv2
+import matplotlib.pyplot as plt
 
 def preprocess(full_obs, camera):
     i1, j1, i2, j2 = camera.camera_param.get_roi()
@@ -13,6 +14,7 @@ def grab_and_preprocess_obs(car, camera):
     full_obs = car.observations[camera.name]
     cropped_obs = preprocess(full_obs, camera)
     resized_obs = cv2.resize(cropped_obs, (32, 30))
+    resized_obs = resized_obs / 255.0
     torch_obs = torch.from_numpy(resized_obs).to(torch.float32)
     return torch_obs
 
