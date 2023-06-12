@@ -9,6 +9,7 @@ import numpy as np
 import vista
 import os
 from vista_helper import *
+import matplotlib.pyplot as plt
 
 # Hyperparameters
 n_train_processes = 3
@@ -44,8 +45,7 @@ class ActorCritic(nn.Module):
         if single_image_input:
             x = x.unsqueeze(0)
             x = x.permute(0, 3, 1, 2)
-        else:
-            x = x.view(x.shape[0] * x.shape[1], 3, 30, 32)
+        x = x.permute(0, 3, 1, 2)
         x = self.relu1(self.norm1(self.conv1(x)))
         x = self.relu2(self.norm2(self.conv2(x)))
         x = self.relu3(self.norm3(self.conv3(x)))
@@ -80,7 +80,6 @@ def worker(worker_id, master_end, worker_end):
         "20210726-184956_lexus_devens_center_reverse",
     ]
     trace_path = [os.path.join(trace_root, p) for p in trace_path]
-    print(f"trace path: {trace_path}")
     world = vista.World(trace_path, trace_config={"road_width": 4})
     car = world.spawn_agent(
         config={
@@ -99,13 +98,15 @@ def worker(worker_id, master_end, worker_end):
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
-            #ob, reward, done, info = env.step(data)
             ob, reward, done, truncated, info = env.step(data)
             if done:
                 ob, info = env.reset()
             worker_end.send((ob, reward, done, info))
         elif cmd == 'reset':
-            ob, info = env.reset()
+            # ob, info = env.reset()
+            vista_reset(world, display)
+            print("reseting")
+            ob = grab_and_preprocess_obs(car, camera)
             worker_end.send(ob)
         elif cmd == 'reset_task':
             ob = env.reset_task()
@@ -153,7 +154,7 @@ class ParallelEnv:
     def reset(self):
         for master_end in self.master_ends:
             master_end.send(('reset', None))
-        return np.stack([master_end.recv() for master_end in self.master_ends])
+        return torch.stack([master_end.recv() for master_end in self.master_ends])
 
     def step(self, actions):
         self.step_async(actions)
@@ -213,7 +214,10 @@ if __name__ == '__main__':
     while step_idx < max_train_steps:
         s_lst, a_lst, r_lst, mask_lst = list(), list(), list(), list()
         for _ in range(update_interval):
-            prob = model.pi(torch.from_numpy(s).float().to(device))
+
+            print(f"collected obs from each worker shape: {s.shape}")
+  
+            prob = model.pi(s)
             a = Categorical(prob).sample().cpu().numpy()
             s_prime, r, done, info = envs.step(a)
 
