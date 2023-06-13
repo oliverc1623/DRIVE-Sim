@@ -16,7 +16,7 @@ import cv2
 n_train_processes = 3
 learning_rate = 0.0005
 update_interval = 5
-gamma = 0.98
+gamma = 0.95
 max_train_steps = 60000
 PRINT_INTERVAL = 5
 
@@ -107,12 +107,16 @@ def worker(worker_id, master_end, worker_end):
             reward = calculate_reward(car)
             done = int(check_crash(car))
             if done:
+                print(f"Worker_{worker_id} has terminated...resetting vista world")
+                reward = torch.tensor(0.0, dtype=torch.float32)
                 vista_reset(world, display)
+                world.set_seed(worker_id)
+                ob = grab_and_preprocess_obs(car, camera)
+
             worker_end.send((ob, reward, torch.tensor(done)))
         elif cmd == 'reset':
             # ob, info = env.reset()
             vista_reset(world, display)
-            print("reseting")
             ob = grab_and_preprocess_obs(car, camera)
             worker_end.send(ob)
         elif cmd == 'reset_task':
@@ -181,9 +185,10 @@ class ParallelEnv:
 def test(step_idx, model, world, car, display, camera, device):
     vista_reset(world, display)
     score = 0.0
-    num_test = 10
+    num_test = 1
 
     for _ in range(num_test):
+        step = 0
         vista_reset(world, display)
         observation = grab_and_preprocess_obs(car, camera)
         done = False
@@ -198,6 +203,8 @@ def test(step_idx, model, world, car, display, camera, device):
 
             observation = observation_prime
             score += reward
+            step += 1
+        print(f"total steps: {step}")
         done = False
     print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}")
 
@@ -247,7 +254,7 @@ if __name__ == '__main__':
     step_idx = 0
     s = envs.reset()
     while step_idx < max_train_steps:
-        s_lst, a_lst, r_lst, mask_lst = list(), list(), list(), list()
+        s_lst, a_lst, r_lst, mask_lst, s_primes = list(), list(), list(), list(), list()
         for _ in range(update_interval):
             mu, sigma = model.pi(s)
             dist = Normal(mu, sigma)
@@ -264,20 +271,21 @@ if __name__ == '__main__':
 
         s_final = s_prime 
         v_final = model.v(s_final).detach().cpu().clone().numpy()
+        print(f"rewards: {r_lst}")
+        print(f"done masks: {mask_lst}")
         td_target = compute_target(v_final, r_lst, mask_lst)
-
         td_target_vec = td_target.reshape(-1)
-        s_vec = torch.stack(s_lst, dim=0) 
+        s_vec = torch.stack(s_lst, dim=0)
         s_vec = s_vec.view(s_vec.shape[0] * s_vec.shape[1], 80, 80, 3)
-        vs = model.v(s_vec)
+        vs = model.v(s_vec).squeeze(1)
 
         a_vec = torch.stack(a_lst).reshape(-1).unsqueeze(1).to(device)
         advantage = td_target_vec.to(device) - vs
+        print(f"advantage: {advantage}")
 
         mu, sigma  = model.pi(s_vec)
         dist = Normal(mu, sigma)
-        log_probs = dist.log_prob(a_vec)
-        
+        log_probs = dist.log_prob(a_vec).squeeze(1)
         loss = -(log_probs * advantage.detach()).mean() +\
             F.smooth_l1_loss(model.v(s_vec).reshape(-1).to(device), td_target_vec.to(device))
 
