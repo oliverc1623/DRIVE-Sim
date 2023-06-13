@@ -18,7 +18,7 @@ learning_rate = 0.0002
 update_interval = 5
 gamma = 0.98
 max_train_steps = 60000
-PRINT_INTERVAL = update_interval * 100
+PRINT_INTERVAL = update_interval
 
 class ActorCritic(nn.Module):
     def __init__(self):
@@ -39,14 +39,14 @@ class ActorCritic(nn.Module):
         self.norm5 = nn.GroupNorm(1, 2)
         self.relu5 = nn.ReLU()
         self.fc = nn.Linear(2 * 80 * 80, 2)
-        self.fc_v = nn.Linear(3 * 80 * 80, 1)
+        self.fc_v = nn.Linear(2 * 80 * 80, 1)
 
     def pi(self, x):
         single_image_input = len(x.shape) == 3  # missing 4th batch dimension
         if single_image_input:
             x = x.unsqueeze(0)
+        else:
             x = x.permute(0, 3, 1, 2)
-        x = x.permute(0, 3, 1, 2)
         x = self.relu1(self.norm1(self.conv1(x)))
         x = self.relu2(self.norm2(self.conv2(x)))
         x = self.relu3(self.norm3(self.conv3(x)))
@@ -61,7 +61,7 @@ class ActorCritic(nn.Module):
         return mu, sigma
     
     def v(self, x):
-        x = x.view(x.shape[0]*x.shape[1], 3, 80, 80)
+        x = x.permute(0, 3, 1, 2)
         x = self.relu1(self.norm1(self.conv1(x)))
         x = self.relu2(self.norm2(self.conv2(x)))
         x = self.relu3(self.norm3(self.conv3(x)))
@@ -179,34 +179,58 @@ class ParallelEnv:
             self.closed = True
 
 def test(step_idx, model, device):
-    env = gym.make('CartPole-v1', render_mode = 'rgb_array')
+    trace_root = "trace"
+    trace_path = [
+        "20210726-154641_lexus_devens_center",
+        "20210726-155941_lexus_devens_center_reverse",
+        "20210726-184624_lexus_devens_center",
+        "20210726-184956_lexus_devens_center_reverse",
+    ]
+    trace_path = [os.path.join(trace_root, p) for p in trace_path]
+    world = vista.World(trace_path, trace_config={"road_width": 4})
+    car = world.spawn_agent(
+        config={
+            "length": 5.0,
+            "width": 2.0,
+            "wheel_base": 2.78,
+            "steering_ratio": 14.7,
+            "lookahead_road": True,
+        }
+    )
+    camera = car.spawn_camera(config={"size": (200, 320)})
+    display = vista.Display(
+        world, display_config={"gui_scale": 2, "vis_full_frame": False}
+    )
     score = 0.0
     num_test = 10
 
     for _ in range(num_test):
-        observation, info = env.reset()
-        terminated = False
-        truncated = False
-        while not terminated and not truncated:
-            prob = model.pi(torch.from_numpy(observation).float().to(device), softmax_dim=0)
-            action = Categorical(prob).sample().cpu().numpy()
-            observation_prime, reward, terminated, truncated, info = env.step(action)
+        vista_reset(world, display)
+        observation = grab_and_preprocess_obs(car, camera)
+        done = False
+        while not done:
+            mu, sigma = model.pi(observation.permute(2,0,1))
+            dist = Normal(mu, sigma)
+            action = dist.sample().cpu().numpy()
+            vista_step(car, action)
+            observation_prime = grab_and_preprocess_obs(car, camera)
+            reward = calculate_reward(car)
+            done = int(check_crash(car))
+
             observation = observation_prime
             score += reward
-        terminated = False
+        done = False
     print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}")
-
-    env.close()
 
 def compute_target(v_final, r_lst, mask_lst):
     G = v_final.reshape(-1)
     td_target = list()
 
     for r, mask in zip(r_lst[::-1], mask_lst[::-1]):
-        G = r + gamma * G * mask
+        G = r.numpy() + gamma * G * mask.numpy()
         td_target.append(G)
 
-    return torch.tensor(td_target[::-1]).float()
+    return torch.tensor(np.array(td_target[::-1])).float()
 
 if __name__ == '__main__':
     device = 'cpu'
@@ -219,42 +243,39 @@ if __name__ == '__main__':
     step_idx = 0
     s = envs.reset()
     while step_idx < max_train_steps:
+        print(f"Episode: {step_idx}")
         s_lst, a_lst, r_lst, mask_lst = list(), list(), list(), list()
         for _ in range(update_interval):
-            print(f"shape: {s.shape}")
             mu, sigma = model.pi(s)
             dist = Normal(mu, sigma)
             a = dist.sample()
             s_prime, r, done = envs.step(a)
 
-            # Plot the stacked image
-            fig, axes = plt.subplots(3, 1, figsize=(8, 8))
-            for i in range(3):
-                axes[i].imshow(s_prime[i])
-                axes[i].axis('off')
-            plt.tight_layout()
-            plt.show()
-
             s_lst.append(s)
             a_lst.append(a)
-            r_lst.append(r/100.0)
+            r_lst.append(r)
             mask_lst.append(1 - done)
 
             s = s_prime
             step_idx += 1
 
-        s_final = torch.from_numpy(s_prime).float().to(device)
+        s_final = s_prime #.permute(0,3,1,2) #torch.from_numpy(s_prime).float().to(device)
         v_final = model.v(s_final).detach().cpu().clone().numpy()
         td_target = compute_target(v_final, r_lst, mask_lst)
 
         td_target_vec = td_target.reshape(-1)
-        s_vec = torch.tensor(s_lst).float().reshape(-1, 4).to(device)  # 4 == Dimension of state
-        a_vec = torch.tensor(a_lst).reshape(-1).unsqueeze(1).to(device)
-        advantage = td_target_vec.to(device) - model.v(s_vec).reshape(-1)
+        s_vec = torch.stack(s_lst, dim=0) # .reshape(-1, 4)  # 4 == Dimension of state
+        s_vec = s_vec.view(s_vec.shape[0] * s_vec.shape[1], 80, 80, 3)
+        vs = model.v(s_vec)
 
-        pi = model.pi(s_vec, softmax_dim=1)
-        pi_a = pi.gather(1, a_vec).reshape(-1)
-        loss = -(torch.log(pi_a).to(device) * advantage.detach()).mean() +\
+        a_vec = torch.stack(a_lst).reshape(-1).unsqueeze(1).to(device)
+        advantage = td_target_vec.to(device) - vs
+
+        mu, sigma  = model.pi(s_vec)
+        dist = Normal(mu, sigma)
+        log_probs = dist.log_prob(a_vec)
+        
+        loss = -(log_probs * advantage.detach()).mean() +\
             F.smooth_l1_loss(model.v(s_vec).reshape(-1).to(device), td_target_vec.to(device))
 
         optimizer.zero_grad()
