@@ -14,11 +14,11 @@ import cv2
 
 # Hyperparameters
 n_train_processes = 3
-learning_rate = 0.0002
+learning_rate = 0.0005
 update_interval = 5
 gamma = 0.98
 max_train_steps = 60000
-PRINT_INTERVAL = update_interval
+PRINT_INTERVAL = 5
 
 class ActorCritic(nn.Module):
     def __init__(self):
@@ -178,29 +178,8 @@ class ParallelEnv:
             worker.join()
             self.closed = True
 
-def test(step_idx, model, device):
-    trace_root = "trace"
-    trace_path = [
-        "20210726-154641_lexus_devens_center",
-        "20210726-155941_lexus_devens_center_reverse",
-        "20210726-184624_lexus_devens_center",
-        "20210726-184956_lexus_devens_center_reverse",
-    ]
-    trace_path = [os.path.join(trace_root, p) for p in trace_path]
-    world = vista.World(trace_path, trace_config={"road_width": 4})
-    car = world.spawn_agent(
-        config={
-            "length": 5.0,
-            "width": 2.0,
-            "wheel_base": 2.78,
-            "steering_ratio": 14.7,
-            "lookahead_road": True,
-        }
-    )
-    camera = car.spawn_camera(config={"size": (200, 320)})
-    display = vista.Display(
-        world, display_config={"gui_scale": 2, "vis_full_frame": False}
-    )
+def test(step_idx, model, world, car, display, camera, device):
+    vista_reset(world, display)
     score = 0.0
     num_test = 10
 
@@ -211,7 +190,7 @@ def test(step_idx, model, device):
         while not done:
             mu, sigma = model.pi(observation.permute(2,0,1))
             dist = Normal(mu, sigma)
-            action = dist.sample().cpu().numpy()
+            action = dist.sample().item()
             vista_step(car, action)
             observation_prime = grab_and_preprocess_obs(car, camera)
             reward = calculate_reward(car)
@@ -240,10 +219,34 @@ if __name__ == '__main__':
     model = ActorCritic().to(device)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
+    ### VISTA World for testing
+    trace_root = "trace"
+    trace_path = [
+        "20210726-154641_lexus_devens_center",
+        "20210726-155941_lexus_devens_center_reverse",
+        "20210726-184624_lexus_devens_center",
+        "20210726-184956_lexus_devens_center_reverse",
+    ]
+    trace_path = [os.path.join(trace_root, p) for p in trace_path]
+    world_test = vista.World(trace_path, trace_config={"road_width": 4})
+    car_test = world_test.spawn_agent(
+        config={
+            "length": 5.0,
+            "width": 2.0,
+            "wheel_base": 2.78,
+            "steering_ratio": 14.7,
+            "lookahead_road": True,
+        }
+    )
+    camera_test = car_test.spawn_camera(config={"size": (200, 320)})
+    display_test = vista.Display(
+        world_test, display_config={"gui_scale": 2, "vis_full_frame": False}
+    )
+    ### 
+
     step_idx = 0
     s = envs.reset()
     while step_idx < max_train_steps:
-        print(f"Episode: {step_idx}")
         s_lst, a_lst, r_lst, mask_lst = list(), list(), list(), list()
         for _ in range(update_interval):
             mu, sigma = model.pi(s)
@@ -259,12 +262,12 @@ if __name__ == '__main__':
             s = s_prime
             step_idx += 1
 
-        s_final = s_prime #.permute(0,3,1,2) #torch.from_numpy(s_prime).float().to(device)
+        s_final = s_prime 
         v_final = model.v(s_final).detach().cpu().clone().numpy()
         td_target = compute_target(v_final, r_lst, mask_lst)
 
         td_target_vec = td_target.reshape(-1)
-        s_vec = torch.stack(s_lst, dim=0) # .reshape(-1, 4)  # 4 == Dimension of state
+        s_vec = torch.stack(s_lst, dim=0) 
         s_vec = s_vec.view(s_vec.shape[0] * s_vec.shape[1], 80, 80, 3)
         vs = model.v(s_vec)
 
@@ -283,6 +286,6 @@ if __name__ == '__main__':
         optimizer.step()
 
         if step_idx % PRINT_INTERVAL == 0:
-            test(step_idx, model, device)
+            test(step_idx, model, world_test, car_test, display_test, camera_test, device)
 
     envs.close()
