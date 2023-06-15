@@ -46,6 +46,7 @@ def check_crash(car):
 
 def calculate_reward(car):
     q_lat = np.abs(car.relative_state.x)
+    # TODO: get car rotation and find 2nd derivative
     road_width = car.trace.road_width
     z_lat = road_width / 2
     if q_lat > z_lat:
