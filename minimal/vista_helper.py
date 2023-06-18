@@ -37,6 +37,7 @@ def check_out_of_lane(car):
     return distance_from_center > half_road_width
 
 def check_exceed_max_rot(car):
+    # Max rotation is pi/10 = 18 degrees
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
     return current_rotation > maximal_rotation
@@ -48,7 +49,8 @@ def calculate_reward(car):
     q_lat = np.abs(car.relative_state.x)
     # TODO: get car rotation and find 2nd derivative
     current_rotation = np.abs(car.relative_state.yaw)
-    
+    print(f"Rotation: {current_rotation}")
+
     road_width = car.trace.road_width
     z_lat = road_width / 2
     if q_lat > z_lat:
