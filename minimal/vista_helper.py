@@ -48,9 +48,10 @@ def check_crash(car):
 def calculate_reward(car):
     q_lat = np.abs(car.relative_state.x)
     # TODO: get car rotation and find 2nd derivative
+    # TODO: figure out difference between steering and yaw
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
-    print(f"Car rotation: {current_rotation*180/np.pi}")
+    # print(f"Car rotation: {current_rotation*180/np.pi}")
 
     road_width = car.trace.road_width
     z_lat = road_width / 2
