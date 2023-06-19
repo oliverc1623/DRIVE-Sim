@@ -48,12 +48,13 @@ def check_crash(car):
 def calculate_reward(car):
     q_lat = np.abs(car.relative_state.x)
     # TODO: get car rotation and find 2nd derivative
+    maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
-    print(f"Rotation: {current_rotation}")
+    print(f"Car rotation: {current_rotation*180/np.pi}")
 
     road_width = car.trace.road_width
     z_lat = road_width / 2
-    if q_lat > z_lat:
+    if q_lat > z_lat or current_rotation > maximal_rotation:
         return torch.tensor(0.0, dtype=torch.float32)
     else:
         lane_reward = torch.round(torch.tensor(1 - (q_lat/z_lat)**2, dtype=torch.float32), decimals=3)
