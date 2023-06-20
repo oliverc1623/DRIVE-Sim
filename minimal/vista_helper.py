@@ -52,6 +52,7 @@ def calculate_reward(car):
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
     # print(f"Car rotation: {current_rotation*180/np.pi}")
+    # Idea: get actual curvature function to compute the double derivative
 
     road_width = car.trace.road_width
     z_lat = road_width / 2
