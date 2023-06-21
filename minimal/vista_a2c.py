@@ -11,9 +11,11 @@ import os
 from vista_helper import *
 import matplotlib.pyplot as plt
 import cv2
+from vista.entities.agents.Dynamics import curvature2tireangle
+from vista.entities.agents.Dynamics import curvature2steering
 
 # Hyperparameters
-n_train_processes = 3
+n_train_processes = 1 # 3
 learning_rate = 0.0005
 update_interval = 5
 gamma = 0.95
@@ -98,11 +100,22 @@ def worker(worker_id, master_end, worker_end):
     print("making new environment")
     print(f"Worker id: {worker_id}")
     world.set_seed(worker_id)
+    prev_curvatures = []
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
             # ob, reward, done, truncated, info = env.step(data)
-            vista_step(car, data.item())
+            prev_curvature = car.curvature
+            prev_curvatures.append(prev_curvature)
+            print(f"prev curvature: {prev_curvatures}")
+            curvature = data.item()
+            print(f"curvature: {curvature}")
+            # print(f"Curvature2tire angle: {curvature2tireangle(data.item(), 2.78)*180/np.pi}")
+            # print(f"Curvature2steering: {curvature2steering(data.item(), 2.78, 14.7)}")
+            # print(f"Car yaw: {car.relative_state.yaw*180.0/np.pi}")
+            vista_step(car, curvature)
+            # print(f"Car rotation post step: {np.abs(car.relative_state.yaw)*180/np.pi}")
+            # print(f"Car curvature: {car.curvature}")
             ob = grab_and_preprocess_obs(car, camera)
             reward = calculate_reward(car)
             done = int(check_crash(car))
@@ -111,7 +124,7 @@ def worker(worker_id, master_end, worker_end):
                 reward = torch.tensor(0.0, dtype=torch.float32)
                 vista_reset(world, display)
                 world.set_seed(worker_id)
-                ob = grab_and_preprocess_obs(car, camera)
+                prev_curvatures = []
 
             worker_end.send((ob, reward, torch.tensor(done)))
         elif cmd == 'reset':
@@ -294,6 +307,7 @@ if __name__ == '__main__':
         optimizer.step()
 
         if step_idx % PRINT_INTERVAL == 0:
-            test(step_idx, model, world_test, car_test, display_test, camera_test, device)
+            # test(step_idx, model, world_test, car_test, display_test, camera_test, device)
+            pass
 
     envs.close()
