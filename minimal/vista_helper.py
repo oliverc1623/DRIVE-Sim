@@ -34,25 +34,36 @@ def check_out_of_lane(car):
     distance_from_center = np.abs(car.relative_state.x)
     road_width = car.trace.road_width 
     half_road_width = road_width / 2
-    return distance_from_center > half_road_width
+    if distance_from_center > half_road_width:
+        print("Out of lane")
+        return True
+    else:
+        return False
 
 def check_exceed_max_rot(car):
     # Max rotation is pi/10 = 18 degrees
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
-    return current_rotation > maximal_rotation
+    if current_rotation > maximal_rotation:
+        print("Exceed max rotation")
+        return True
+    else:
+        return False
 
 def check_crash(car): 
     return check_out_of_lane(car) or check_exceed_max_rot(car) or car.done
 
-def calculate_reward(car):
+def calculate_reward(car, prev_curvatures):
     q_lat = np.abs(car.relative_state.x)
     # TODO: get car rotation and find 2nd derivative
     # TODO: figure out difference between steering and yaw
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
-    # print(f"Car rotation: {current_rotation*180/np.pi}")
-    # Idea: get actual curvature function to compute the double derivative
+    # print(f"prev curvature: {prev_curvatures}")
+    curvature = np.abs(car.curvature)
+    # print(f"curvature: {curvature}")
+    second_derivative = -np.abs(curvature - np.mean(prev_curvatures))
+    # print(f"second_derivative: {second_derivative}")
 
     road_width = car.trace.road_width
     z_lat = road_width / 2
@@ -60,4 +71,5 @@ def calculate_reward(car):
         return torch.tensor(0.0, dtype=torch.float32)
     else:
         lane_reward = torch.round(torch.tensor(1 - (q_lat/z_lat)**2, dtype=torch.float32), decimals=3)
-        return lane_reward
+        reward = lane_reward + second_derivative
+        return reward
