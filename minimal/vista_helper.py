@@ -35,7 +35,7 @@ def check_out_of_lane(car):
     road_width = car.trace.road_width 
     half_road_width = road_width / 2
     if distance_from_center > half_road_width:
-        print("Out of lane")
+        # print("Out of lane")
         return True
     else:
         return False
@@ -45,7 +45,7 @@ def check_exceed_max_rot(car):
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
     if current_rotation > maximal_rotation:
-        print("Exceed max rotation")
+        # print("Exceed max rotation")
         return True
     else:
         return False
@@ -55,8 +55,6 @@ def check_crash(car):
 
 def calculate_reward(car, prev_curvatures):
     q_lat = np.abs(car.relative_state.x)
-    # TODO: get car rotation and find 2nd derivative
-    # TODO: figure out difference between steering and yaw
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
     # print(f"prev curvature: {prev_curvatures}")

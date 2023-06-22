@@ -15,7 +15,7 @@ from vista.entities.agents.Dynamics import curvature2tireangle
 from vista.entities.agents.Dynamics import curvature2steering
 
 # Hyperparameters
-n_train_processes = 1 # 3
+n_train_processes = 3
 learning_rate = 0.0005
 update_interval = 5
 gamma = 0.95
@@ -97,30 +97,20 @@ def worker(worker_id, master_end, worker_end):
     display = vista.Display(
         world, display_config={"gui_scale": 2, "vis_full_frame": False}
     )
-    print("making new environment")
-    print(f"Worker id: {worker_id}")
     world.set_seed(worker_id)
     prev_curvatures = []
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
             # ob, reward, done, truncated, info = env.step(data)
-            prev_curvature = car.curvature
+            prev_curvature = np.abs(car.curvature)
             prev_curvatures.append(prev_curvature)
-            print(f"prev curvature: {prev_curvatures}")
             curvature = data.item()
-            print(f"curvature: {curvature}")
-            # print(f"Curvature2tire angle: {curvature2tireangle(data.item(), 2.78)*180/np.pi}")
-            # print(f"Curvature2steering: {curvature2steering(data.item(), 2.78, 14.7)}")
-            # print(f"Car yaw: {car.relative_state.yaw*180.0/np.pi}")
             vista_step(car, curvature)
-            # print(f"Car rotation post step: {np.abs(car.relative_state.yaw)*180/np.pi}")
-            # print(f"Car curvature: {car.curvature}")
             ob = grab_and_preprocess_obs(car, camera)
-            reward = calculate_reward(car)
+            reward = calculate_reward(car, prev_curvatures)
             done = int(check_crash(car))
             if done:
-                print(f"Worker_{worker_id} has terminated...resetting vista world")
                 reward = torch.tensor(0.0, dtype=torch.float32)
                 vista_reset(world, display)
                 world.set_seed(worker_id)
@@ -205,13 +195,16 @@ def test(step_idx, model, world, car, display, camera, device):
         vista_reset(world, display)
         observation = grab_and_preprocess_obs(car, camera)
         done = False
+        prev_curvatures = []
         while not done:
             mu, sigma = model.pi(observation.permute(2,0,1))
             dist = Normal(mu, sigma)
+            prev_curvature = np.abs(car.curvature)
+            prev_curvatures.append(prev_curvature)
             action = dist.sample().item()
             vista_step(car, action)
             observation_prime = grab_and_preprocess_obs(car, camera)
-            reward = calculate_reward(car)
+            reward = calculate_reward(car, prev_curvatures)
             done = int(check_crash(car))
 
             observation = observation_prime
@@ -273,7 +266,7 @@ if __name__ == '__main__':
             dist = Normal(mu, sigma)
             a = dist.sample()
             s_prime, r, done = envs.step(a)
-
+            print(r)
             s_lst.append(s)
             a_lst.append(a)
             r_lst.append(r)
@@ -284,8 +277,6 @@ if __name__ == '__main__':
 
         s_final = s_prime 
         v_final = model.v(s_final).detach().cpu().clone().numpy()
-        print(f"rewards: {r_lst}")
-        print(f"done masks: {mask_lst}")
         td_target = compute_target(v_final, r_lst, mask_lst)
         td_target_vec = td_target.reshape(-1)
         s_vec = torch.stack(s_lst, dim=0)
@@ -294,7 +285,6 @@ if __name__ == '__main__':
 
         a_vec = torch.stack(a_lst).reshape(-1).unsqueeze(1).to(device)
         advantage = td_target_vec.to(device) - vs
-        print(f"advantage: {advantage}")
 
         mu, sigma  = model.pi(s_vec)
         dist = Normal(mu, sigma)
@@ -302,12 +292,13 @@ if __name__ == '__main__':
         loss = -(log_probs * advantage.detach()).mean() +\
             F.smooth_l1_loss(model.v(s_vec).reshape(-1).to(device), td_target_vec.to(device))
 
+        print("Calculating gradients...")
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
         if step_idx % PRINT_INTERVAL == 0:
-            # test(step_idx, model, world_test, car_test, display_test, camera_test, device)
-            pass
+            print("Testing...")
+            test(step_idx, model, world_test, car_test, display_test, camera_test, device)
 
     envs.close()
