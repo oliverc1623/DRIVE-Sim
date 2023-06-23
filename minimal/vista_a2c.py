@@ -15,9 +15,9 @@ from vista.entities.agents.Dynamics import curvature2tireangle
 from vista.entities.agents.Dynamics import curvature2steering
 
 # Hyperparameters
-n_train_processes = 1 #3
+n_train_processes = 3
 learning_rate = 0.0005
-update_interval = 5
+update_interval = 20
 gamma = 0.95
 max_train_steps = 60000
 PRINT_INTERVAL = 5
@@ -106,12 +106,15 @@ def worker(worker_id, master_end, worker_end):
             prev_curvature = car.curvature
             vista_step(car, curvature)
             ob = grab_and_preprocess_obs(car, camera)
+            # display.render()
+            # plt.pause(0.5)
             reward = calculate_reward(car, prev_curvature)
             done = int(check_crash(car))
             if done:
                 reward = torch.tensor(0.0, dtype=torch.float32)
-                vista_reset(world, display)
                 world.set_seed(worker_id)
+                vista_reset(world, display)
+                print(f"worker id: {worker_id}")
                 prev_curvatures = []
 
             worker_end.send((ob, reward, torch.tensor(done)))
