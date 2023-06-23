@@ -102,9 +102,6 @@ def worker(worker_id, master_end, worker_end):
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
-            # ob, reward, done, truncated, info = env.step(data)
-            prev_curvature = np.abs(car.curvature)
-            prev_curvatures.append(prev_curvature)
             curvature = data.item()
             vista_step(car, curvature)
             ob = grab_and_preprocess_obs(car, camera)
@@ -114,7 +111,7 @@ def worker(worker_id, master_end, worker_end):
                 reward = torch.tensor(0.0, dtype=torch.float32)
                 vista_reset(world, display)
                 world.set_seed(worker_id)
-                prev_curvatures = []
+                # prev_curvatures = []
 
             worker_end.send((ob, reward, torch.tensor(done)))
         elif cmd == 'reset':
@@ -199,7 +196,7 @@ def test(step_idx, model, world, car, display, camera, device):
         while not done:
             mu, sigma = model.pi(observation.permute(2,0,1))
             dist = Normal(mu, sigma)
-            prev_curvature = np.abs(car.curvature)
+            prev_curvature = car.curvature
             prev_curvatures.append(prev_curvature)
             action = dist.sample().item()
             vista_step(car, action)
@@ -266,7 +263,6 @@ if __name__ == '__main__':
             dist = Normal(mu, sigma)
             a = dist.sample()
             s_prime, r, done = envs.step(a)
-            print(r)
             s_lst.append(s)
             a_lst.append(a)
             r_lst.append(r)
@@ -285,6 +281,7 @@ if __name__ == '__main__':
 
         a_vec = torch.stack(a_lst).reshape(-1).unsqueeze(1).to(device)
         advantage = td_target_vec.to(device) - vs
+        print(f"reward: {r_lst}")
 
         mu, sigma  = model.pi(s_vec)
         dist = Normal(mu, sigma)

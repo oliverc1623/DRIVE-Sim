@@ -45,7 +45,7 @@ def check_exceed_max_rot(car):
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
     if current_rotation > maximal_rotation:
-        # print("Exceed max rotation")
+        print("Exceed max rotation")
         return True
     else:
         return False
@@ -58,9 +58,9 @@ def calculate_reward(car, prev_curvatures):
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
     # print(f"prev curvature: {prev_curvatures}")
-    curvature = np.abs(car.curvature)
+    curvature = car.curvature
     # print(f"curvature: {curvature}")
-    second_derivative = -np.abs(curvature - np.mean(prev_curvatures))
+    # second_derivative = -np.abs(curvature - np.mean(prev_curvatures))
     # print(f"second_derivative: {second_derivative}")
 
     road_width = car.trace.road_width
@@ -69,5 +69,5 @@ def calculate_reward(car, prev_curvatures):
         return torch.tensor(0.0, dtype=torch.float32)
     else:
         lane_reward = torch.round(torch.tensor(1 - (q_lat/z_lat)**2, dtype=torch.float32), decimals=3)
-        reward = lane_reward + second_derivative
+        reward = lane_reward #+ second_derivative
         return reward
