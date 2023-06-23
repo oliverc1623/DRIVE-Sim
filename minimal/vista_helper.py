@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import cv2
 import matplotlib.pyplot as plt
+from vista.entities.agents.Dynamics import curvature2steering
 
 def preprocess(full_obs, camera):
     i1, j1, i2, j2 = camera.camera_param.get_roi()
@@ -57,10 +58,10 @@ def calculate_reward(car, prev_curvature):
     q_lat = np.abs(car.relative_state.x)
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
-    print(f"prev curvature: {prev_curvature}")
-    print(f"curvature: {car.curvature}")
+    print(f"prev curvature: {curvature2steering(prev_curvature, 2.78, 14.7)}")
+    print(f"curvature: {curvature2steering(car.curvature, 2.78, 14.7)}")
     differential = -np.abs(car.curvature - prev_curvature)
-    print(f"difference: {differential}")
+    # print(f"difference: {differential}")
 
     road_width = car.trace.road_width
     z_lat = road_width / 2
