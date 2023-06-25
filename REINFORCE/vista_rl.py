@@ -2,7 +2,7 @@ import argparse
 # from learn import Memory, Learner
 # from learn_lstm import Learner
 # from learn import Learner
-from learn_gpu import Learner
+from reinforce import Learner
 # from learn_ppo import Learner 
 # from learn_gpu_pairs import Learner
 # from learn_gpu_trpo import Learner
@@ -29,7 +29,7 @@ if __name__=="__main__":
     parser.add_argument("-e", "--episodes", default=500, type=int)
     parser.add_argument("-c", "--clip", default=2, type=int)
     parser.add_argument("-a", "--animate", default=False, action='store_true', help='Bool type')
-    parser.add_argument("--algorithm", required=True)
+    parser.add_argument("--algorithm", default='vpg')
     args = parser.parse_args()
     main(args)
 
