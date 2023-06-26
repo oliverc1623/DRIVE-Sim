@@ -54,7 +54,7 @@ class Memory:
 ### Learner Class ###
 class Learner:
     def __init__(
-        self, model_name, learning_rate, episodes, clip, animate, algorithm, max_curvature=1/8.0, max_std=0.1
+        self, model_name, learning_rate, episodes, clip, animate, algorithm, filename, max_curvature=1/8.0, max_std=0.1
     ) -> None:
         # Set up VISTA simulator
         trace_root = "trace"
@@ -90,6 +90,7 @@ class Learner:
         self.clip = clip
 
         self.animate = animate
+        self.filename = filename
         self._write_file_()
 
     def _write_file_(self):
@@ -108,12 +109,11 @@ class Learner:
 
         if not os.path.exists(model_results_dir):
             os.makedirs(model_results_dir)
-        filename = f"{self.model_name}_{device}_{self.learning_rate}_{self.clip}_results_{self.timestamp}.txt"
         # Define the file path
-        print(filename)
-        file_path = os.path.join(model_results_dir, filename)
+        print(self.filename + ".txt")
+        file_path = os.path.join(model_results_dir, self.filename + ".txt")
         self.f = open(file_path, "w")
-        self.f.write("reward\tloss\tsteps\n")
+        self.f.write("reward\tloss\tsteps\ttrace\tdone\n")
 
     def _vista_reset_(self):
         self.world.reset()
@@ -254,6 +254,7 @@ class Learner:
         for i_episode in range(self.episodes):
             # Restart the environment
             self._vista_reset_()
+            trace_index = self.car.trace_index
             memory.clear()
             steps = 0
             _, observation = self._grab_and_preprocess_obs_(steps, i_episode, augment=False, animate=self.animate)     
@@ -279,6 +280,7 @@ class Learner:
                 else:
                     differential = -np.abs(curvature_action - prev_curvature)
                 reward = (lane_reward + differential) if not self._check_crash_() else 0.0
+                # reward = lane_reward if not self._check_crash_() else 0.0
                 prev_curvature = curvature_action
                 # add to memory
                 memory.add_to_memory(observation, memory_action, reward)
@@ -289,6 +291,7 @@ class Learner:
                     # determine total reward and keep a record of this
                     total_reward = sum(memory.rewards)
                     print(f"steps: {steps}")
+                    print(f"Car done: {self.car.done}\n")
 
                     batch_size = min(len(memory), max_batch_size)
                     i = torch.randperm(len(memory))[:batch_size].to(device)
@@ -313,7 +316,7 @@ class Learner:
                     episode_loss = running_loss / datasize
 
                     # Write reward and loss to results txt file
-                    self.f.write(f"{total_reward}\t{running_loss}\t{steps}\n")
+                    self.f.write(f"{total_reward}\t{running_loss}\t{steps}\t{trace_index}\t{self.car.done}\n")
 
                     # reset the memory
                     memory.clear()
