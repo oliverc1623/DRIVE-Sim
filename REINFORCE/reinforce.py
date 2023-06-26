@@ -12,7 +12,6 @@ import torch.optim as optim
 import time
 import datetime
 import resnet
-# import rnn
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
@@ -239,6 +238,7 @@ class Learner:
 
     def learn(self):
         self._vista_reset_()
+        prev_curvature = 0.0
         ## Training parameters and initialization ##
         ## Re-run this cell to restart training from scratch ##
         optimizer = optim.Adam(self.driving_model.parameters(), lr=self.learning_rate, weight_decay=1e-5)
@@ -274,7 +274,12 @@ class Learner:
                 road_width = self.car.trace.road_width
                 z_lat = road_width / 2
                 lane_reward = torch.round(torch.tensor(1 - (q_lat/z_lat)**2, dtype=torch.float32), decimals=3)
-                reward = lane_reward if not self._check_crash_() else 0.0
+                if prev_curvature == 0.0:
+                    differential = 0.0
+                else:
+                    differential = -np.abs(curvature_action - prev_curvature)
+                reward = (lane_reward + differential) if not self._check_crash_() else 0.0
+                prev_curvature = curvature_action
                 # add to memory
                 memory.add_to_memory(observation, memory_action, reward)
                 steps += 1
