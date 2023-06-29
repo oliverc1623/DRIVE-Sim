@@ -113,7 +113,7 @@ class Learner:
         print(self.filename + ".txt")
         file_path = os.path.join(model_results_dir, self.filename + ".txt")
         self.f = open(file_path, "w")
-        self.f.write("reward\tloss\tsteps\ttrace\tdone\n")
+        self.f.write("reward\tloss\tsteps\ttrace\tdone\tcompleted\n")
 
     def _vista_reset_(self):
         self.world.reset()
@@ -212,7 +212,7 @@ class Learner:
         neg_logprob = -1 * prediction.log_prob(actions)
         loss = (neg_logprob * discounted_rewards).mean()
         loss.backward()
-        nn.utils.clip_grad_value_(self.driving_model.parameters(), self.clip)
+        nn.utils.clip_grad_norm_(self.driving_model.parameters(), self.clip)
         optimizer.step()
         return loss.item()
 
@@ -241,7 +241,7 @@ class Learner:
         prev_curvature = 0.0
         ## Training parameters and initialization ##
         ## Re-run this cell to restart training from scratch ##
-        optimizer = optim.Adam(self.driving_model.parameters(), lr=self.learning_rate, weight_decay=1e-5)
+        optimizer = optim.Adam(self.driving_model.parameters(), lr=self.learning_rate)
         running_loss = 0
         datasize = 0
         # instantiate Memory buffer
@@ -255,9 +255,12 @@ class Learner:
             # Restart the environment
             self._vista_reset_()
             trace_index = self.car.trace_index
+            initial_frame = self.car.frame_index
+            total_frames = len(self.car.trace.good_frames['camera_front'][0])
+            track_left = total_frames - initial_frame
             memory.clear()
             steps = 0
-            _, observation = self._grab_and_preprocess_obs_(steps, i_episode, augment=False, animate=self.animate)     
+            _, observation = self._grab_and_preprocess_obs_(steps, i_episode, augment=False, animate=self.animate)
             print(f"Episode: {i_episode}")
             while True:
                 self.driving_model.eval()
@@ -280,7 +283,6 @@ class Learner:
                 else:
                     differential = -np.abs(curvature_action - prev_curvature)
                 reward = (lane_reward + differential) if not self._check_crash_() else 0.0
-                # reward = lane_reward if not self._check_crash_() else 0.0
                 prev_curvature = curvature_action
                 # add to memory
                 memory.add_to_memory(observation, memory_action, reward)
@@ -290,7 +292,10 @@ class Learner:
                     self.driving_model.train()
                     # determine total reward and keep a record of this
                     total_reward = sum(memory.rewards)
+                    progress = self.car.frame_index - initial_frame
+                    progress_percentage = np.round(progress/track_left, 4)
                     print(f"steps: {steps}")
+                    print(f"progress percentage: {progress_percentage}")
                     print(f"Car done: {self.car.done}\n")
 
                     batch_size = min(len(memory), max_batch_size)
@@ -316,7 +321,8 @@ class Learner:
                     episode_loss = running_loss / datasize
 
                     # Write reward and loss to results txt file
-                    self.f.write(f"{total_reward}\t{running_loss}\t{steps}\t{trace_index}\t{self.car.done}\n")
+                    self.f.write(f"{total_reward}\t{running_loss}\t{steps}\t{trace_index}\t{self.car.done}\t{progress_percentage}\n")
+                    self.f.flush()
 
                     # reset the memory
                     memory.clear()
@@ -327,7 +333,7 @@ class Learner:
                     #     param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
                     #     total_norm += param_norm.item() ** 2 # accumulate the squared norm
                     # total_norm = total_norm ** 0.5 # take the square root to get the total norm
-                    # print(f"Total gradient norm: {total_norm}")
+                    # print(f"Total gradient norm: {total_norm}\n")
 
                     break
 
