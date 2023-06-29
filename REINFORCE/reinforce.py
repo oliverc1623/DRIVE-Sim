@@ -192,7 +192,7 @@ class Learner:
         full_obs = self.car.observations[self.camera.name]
         cropped_obs = self._preprocess_(full_obs)
         resized_obs = self._resize_image(cropped_obs)
-        if animate:
+        if animate and i%5==0:
             self.display.render()
             plt.tight_layout(pad=0)
             plt.savefig(self.model_frame_dir + f"frame_episode_{i:03d}_step_{s:04d}.png", bbox_inches="tight")
@@ -237,6 +237,7 @@ class Learner:
         return pred_dist
 
     def learn(self):
+        self.world.set_seed(47)
         self._vista_reset_()
         prev_curvature = 0.0
         ## Training parameters and initialization ##
@@ -253,6 +254,7 @@ class Learner:
 
         for i_episode in range(self.episodes):
             # Restart the environment
+            self.world.set_seed(47) # comment if you want to use all traces
             self._vista_reset_()
             trace_index = self.car.trace_index
             initial_frame = self.car.frame_index
