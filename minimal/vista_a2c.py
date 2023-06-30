@@ -17,7 +17,7 @@ from vista.entities.agents.Dynamics import curvature2steering
 # Hyperparameters
 n_train_processes = 3
 learning_rate = 0.0005
-update_interval = 100
+update_interval = 10 #100
 gamma = 0.95
 max_train_steps = 60000
 PRINT_INTERVAL = 5
@@ -25,10 +25,10 @@ PRINT_INTERVAL = 5
 class ActorCritic(nn.Module):
     def __init__(self):
         super(ActorCritic, self).__init__()
-        self.conv1 = nn.Conv2d(3, 80, kernel_size=3, stride=1, padding=1)
-        self.norm1 = nn.GroupNorm(8, 80)
+        self.conv1 = nn.Conv2d(3, 32, kernel_size=3, stride=1, padding=1)
+        self.norm1 = nn.GroupNorm(8, 32)
         self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(80, 64, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
         self.norm2 = nn.GroupNorm(16, 64)
         self.relu2 = nn.ReLU()
         self.conv3 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
@@ -40,8 +40,8 @@ class ActorCritic(nn.Module):
         self.conv5 = nn.Conv2d(256, 2, kernel_size=3, stride=1, padding=1)
         self.norm5 = nn.GroupNorm(1, 2)
         self.relu5 = nn.ReLU()
-        self.fc = nn.Linear(2 * 80 * 80, 2)
-        self.fc_v = nn.Linear(2 * 80 * 80, 1)
+        self.fc = nn.Linear(2 * 32 * 30, 2)
+        self.fc_v = nn.Linear(2 * 32 * 30, 1)
 
     def pi(self, x):
         single_image_input = len(x.shape) == 3  # missing 4th batch dimension
@@ -97,7 +97,7 @@ def worker(worker_id, master_end, worker_end):
     display = vista.Display(
         world, display_config={"gui_scale": 2, "vis_full_frame": False}
     )
-    world.set_seed(worker_id)
+    world.set_seed(47)
     prev_curvature = car.curvature
     while True:
         cmd, data = worker_end.recv()
@@ -107,17 +107,17 @@ def worker(worker_id, master_end, worker_end):
             ob = grab_and_preprocess_obs(car, camera)
             # display.render()
             # plt.pause(0.5)
-            reward = calculate_reward(car, prev_curvature)
+            reward = calculate_reward(car, curvature, prev_curvature)
             prev_curvature = curvature
             done = int(check_crash(car))
             if done:
-                reward = torch.tensor(0.0, dtype=torch.float32)
                 world.set_seed(worker_id)
                 vista_reset(world, display)
                 prev_curvature = 0.0
             worker_end.send((ob, reward, torch.tensor(done)))
         elif cmd == 'reset':
             # ob, info = env.reset()
+            world.set_seed(47)
             vista_reset(world, display)
             ob = grab_and_preprocess_obs(car, camera)
             worker_end.send(ob)
@@ -203,7 +203,7 @@ def test(step_idx, model, world, car, display, camera, device):
             vista_step(car, action)
             prev_curvature = action
             observation_prime = grab_and_preprocess_obs(car, camera)
-            reward = calculate_reward(car, prev_curvature)
+            reward = calculate_reward(car, action, prev_curvature)
             done = int(check_crash(car))
 
             observation = observation_prime
@@ -211,7 +211,7 @@ def test(step_idx, model, world, car, display, camera, device):
             step += 1
         print(f"total steps: {step}")
         done = False
-    print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}")
+    print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}\n")
 
 def compute_target(v_final, r_lst, mask_lst):
     G = v_final.reshape(-1)
@@ -261,9 +261,16 @@ if __name__ == '__main__':
     while step_idx < max_train_steps:
         s_lst, a_lst, r_lst, mask_lst, s_primes = list(), list(), list(), list(), list()
         for _ in range(update_interval):
-            mu, sigma = model.pi(s)
-            dist = Normal(mu, sigma)
-            a = dist.sample()
+            mu0, sigma0 = model.pi(s[0].permute(2,0,1))
+            mu1, sigma1 = model.pi(s[1].permute(2,0,1))
+            mu2, sigma2 = model.pi(s[2].permute(2,0,1))
+            dist0 = Normal(mu0, sigma0)
+            dist1 = Normal(mu1, sigma1)
+            dist2 = Normal(mu2, sigma2)
+            a0 = dist0.sample()
+            a1 = dist1.sample()
+            a2 = dist2.sample()
+            a = torch.tensor([a0, a1, a2])
             s_prime, r, done = envs.step(a)
             s_lst.append(s)
             a_lst.append(a)
@@ -278,12 +285,11 @@ if __name__ == '__main__':
         td_target = compute_target(v_final, r_lst, mask_lst)
         td_target_vec = td_target.reshape(-1)
         s_vec = torch.stack(s_lst, dim=0)
-        s_vec = s_vec.view(s_vec.shape[0] * s_vec.shape[1], 80, 80, 3)
+        s_vec = s_vec.view(s_vec.shape[0] * s_vec.shape[1], 32, 30, 3)
         vs = model.v(s_vec).squeeze(1)
 
         a_vec = torch.stack(a_lst).reshape(-1).unsqueeze(1).to(device)
         advantage = td_target_vec.to(device) - vs
-        print(f"reward: {r_lst}")
 
         mu, sigma  = model.pi(s_vec)
         dist = Normal(mu, sigma)
