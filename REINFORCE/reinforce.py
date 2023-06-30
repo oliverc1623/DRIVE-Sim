@@ -285,6 +285,8 @@ class Learner:
                 else:
                     differential = -np.abs(curvature_action - prev_curvature)
                 reward = (lane_reward + differential) if not self._check_crash_() else 0.0
+                if reward < 0:
+                    reward = 0.0
                 prev_curvature = curvature_action
                 # add to memory
                 memory.add_to_memory(observation, memory_action, reward)
@@ -328,7 +330,8 @@ class Learner:
 
                     # reset the memory
                     memory.clear()
-
+                    prev_curvature = 0.0
+                    time.sleep(0.1)
                     # Check gradients norms
                     # total_norm = 0
                     # for p in self.driving_model.parameters():
