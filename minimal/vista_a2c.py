@@ -17,7 +17,7 @@ from vista.entities.agents.Dynamics import curvature2steering
 # Hyperparameters
 n_train_processes = 3
 learning_rate = 0.0005
-update_interval = 20
+update_interval = 100
 gamma = 0.95
 max_train_steps = 60000
 PRINT_INTERVAL = 5
@@ -98,25 +98,23 @@ def worker(worker_id, master_end, worker_end):
         world, display_config={"gui_scale": 2, "vis_full_frame": False}
     )
     world.set_seed(worker_id)
-    prev_curvatures = []
+    prev_curvature = car.curvature
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
             curvature = data.item()
-            prev_curvature = car.curvature
             vista_step(car, curvature)
             ob = grab_and_preprocess_obs(car, camera)
             # display.render()
             # plt.pause(0.5)
             reward = calculate_reward(car, prev_curvature)
+            prev_curvature = curvature
             done = int(check_crash(car))
             if done:
                 reward = torch.tensor(0.0, dtype=torch.float32)
                 world.set_seed(worker_id)
                 vista_reset(world, display)
-                print(f"worker id: {worker_id}")
-                prev_curvatures = []
-
+                prev_curvature = 0.0
             worker_end.send((ob, reward, torch.tensor(done)))
         elif cmd == 'reset':
             # ob, info = env.reset()
@@ -187,22 +185,23 @@ class ParallelEnv:
             self.closed = True
 
 def test(step_idx, model, world, car, display, camera, device):
+    world.set_seed(47)
     vista_reset(world, display)
     score = 0.0
     num_test = 1
-
     for _ in range(num_test):
         step = 0
+        world.set_seed(47)
         vista_reset(world, display)
         observation = grab_and_preprocess_obs(car, camera)
         done = False
-        prev_curvatures = []
+        prev_curvature = 0.0
         while not done:
             mu, sigma = model.pi(observation.permute(2,0,1))
             dist = Normal(mu, sigma)
-            prev_curvature = car.curvature
             action = dist.sample().item()
             vista_step(car, action)
+            prev_curvature = action
             observation_prime = grab_and_preprocess_obs(car, camera)
             reward = calculate_reward(car, prev_curvature)
             done = int(check_crash(car))

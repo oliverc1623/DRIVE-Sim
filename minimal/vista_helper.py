@@ -58,11 +58,10 @@ def calculate_reward(car, prev_curvature):
     q_lat = np.abs(car.relative_state.x)
     maximal_rotation = np.pi / 10.
     current_rotation = np.abs(car.relative_state.yaw)
-    print(f"prev curvature: {curvature2steering(prev_curvature, 2.78, 14.7)}")
-    print(f"curvature: {curvature2steering(car.curvature, 2.78, 14.7)}")
-    differential = -np.abs(car.curvature - prev_curvature)
-    # print(f"difference: {differential}")
-
+    if prev_curvature == 0.0:
+        differential = 0.0
+    else:
+        differential = -np.abs(car.curvature - prev_curvature)
     road_width = car.trace.road_width
     z_lat = road_width / 2
     if q_lat > z_lat or current_rotation > maximal_rotation:
