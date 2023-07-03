@@ -43,12 +43,13 @@ def check_exceed_max_rot(car):
 def check_crash(car): 
     return check_out_of_lane(car) or check_exceed_max_rot(car) or car.done
 
-def calculate_reward(car):
+def calculate_reward(car, curvature_action, prev_curvature):
     q_lat = np.abs(car.relative_state.x)
     road_width = car.trace.road_width
     z_lat = road_width / 2
-    if q_lat > z_lat:
-        return torch.tensor(0.0, dtype=torch.float32)
-    else:
-        lane_reward = torch.round(torch.tensor(1 - (q_lat/z_lat)**2, dtype=torch.float32), decimals=3)
-        return lane_reward
+    lane_reward = torch.round(torch.tensor(1 - (q_lat/z_lat)**2, dtype=torch.float32), decimals=3)
+    differential = 0.0 if prev_curvature==0.0 else -np.abs(curvature_action - prev_curvature)
+    reward = (lane_reward + differential) if not check_crash(car) else torch.tensor(0.0, dtype=torch.float32)
+    if reward < 0:
+        reward = torch.tensor(0.0, dtype=torch.float32)
+    return reward

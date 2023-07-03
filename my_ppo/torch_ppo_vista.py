@@ -9,6 +9,8 @@ from vista_helper import *
 from replay_memory import Memory
 import math
 from common import estimate_advantages
+import matplotlib.pyplot as plt
+import numpy
 
 dtype = torch.float32
 torch.set_default_dtype(dtype)
@@ -88,7 +90,9 @@ class PPO(nn.Module):
         total_reward = 0
         num_episodes = 0
         while num_steps < mini_batch_size:
+            world.set_seed(47)
             vista_reset(world, display)
+            prev_curvature = 0.0
             s = grab_and_preprocess_obs(car, camera).to(device)
             reward_episode = 0
             for t in range(10000):
@@ -96,9 +100,11 @@ class PPO(nn.Module):
                 dist = Normal(mu, std)
                 a = dist.sample()
                 log_prob = dist.log_prob(a)
-                vista_step(car, curvature = a.item())
+                curvature_action = a.item()
+                vista_step(car, curvature_action)
                 s_prime = grab_and_preprocess_obs(car, camera).to(device)
-                r = calculate_reward(car)
+                r = calculate_reward(car, curvature_action, prev_curvature)
+                prev_curvature = curvature_action
                 reward_episode += r
                 crash = check_crash(car)
                 mask = 0 if crash else 1
@@ -188,7 +194,7 @@ class PPO(nn.Module):
 
 def main():
     # Set up VISTA simulator
-    trace_root = "../../Sim2Real/vista/trace"
+    trace_root = "trace"
     trace_path = [
         "20210726-154641_lexus_devens_center",
         "20210726-155941_lexus_devens_center_reverse",
