@@ -343,4 +343,4 @@ class Learner:
                     break
 
     def save(self):
-        torch.save(self.driving_model.state_dict(), f"models/{self.model_name}_{self.timestamp}_.pth")
+        torch.save(self.driving_model.state_dict(), f"models/{self.filename}_{self.timestamp}_.pth")
