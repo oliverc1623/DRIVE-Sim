@@ -1,14 +1,13 @@
 import vista
 import torch
-from torch import nn
 import os
-from data_preprocessing import *
-from terminal import * 
-from NeuralNetwork import run_driving_model, compute_driving_loss
 import matplotlib.pyplot as plt
+from REINFORCE import mycnn
+from my_ppo.vista_helper import *
+import torch.distributions as dist
 
 
-trace_root = "../trace"
+trace_root = "trace"
 trace_path = [
     "20210726-154641_lexus_devens_center",
     "20210726-155941_lexus_devens_center_reverse",
@@ -42,29 +41,31 @@ def vista_step(curvature=None, speed=None):
     car.step_dynamics(action=np.array([curvature, speed]), dt=1 / 15.0)
     car.step_sensors()
 
-
 def vista_reset():
     world.reset()
     display.reset()
 
 vista_reset()
 
-driving_model = nn.Sequential(
-    nn.Conv2d(3, 32, 5),
-    nn.SiLU(),
-    nn.Conv2d(32, 48, 5),
-    nn.SiLU(),
-    nn.Conv2d(48, 64, 3),
-    nn.SiLU(),
-    nn.Conv2d(64, 64, 3),
-    nn.SiLU(),
-    nn.Flatten(),
-    nn.Linear(302016, 128),
-    nn.SiLU(),
-    nn.Linear(128, 2),
-)  # NeuralNetwork()
-driving_model.load_state_dict(torch.load("model.pth"))
-driving_model.eval()
+def run_driving_model(image, model):
+    max_curvature=1/8.0
+    max_std=0.1
+    single_image_input = len(image.shape) == 3  # missing 4th batch dimension
+    if single_image_input:
+        image = image.unsqueeze(0)
+    image = image.permute(0, 3, 1, 2)
+    mu, logsigma = model(image)
+    mu = max_curvature * torch.tanh(mu)  # conversion
+    sigma = max_std * torch.sigmoid(logsigma) + 0.005  # conversion
+
+    pred_dist = dist.Normal(mu, sigma)
+    return pred_dist
+
+
+driving_model = mycnn.CNN()
+driving_model.load_state_dict(torch.load("models/reinforce1_2023-07-05_17-18-02_.pth"))
+
+print(driving_model)
 
 ## Evaluation block!##
 
@@ -73,21 +74,17 @@ num_episodes = 5
 num_reset = 5
 for i_episode in range(num_episodes):
     # Restart the environment
+    # world.set_seed(47)
     vista_reset()
     observation = grab_and_preprocess_obs(car, camera)
 
     print("rolling out in env")
     episode_step = 0
-    while not check_crash(car) and episode_step < 100:
-        # using our observation, choose an action and take it in the environment
+    while not check_crash(car):
         curvature_dist = run_driving_model(observation, driving_model)
-        print(f"curvature distribution: {curvature_dist}")
-        # curvature = curvature_dist.loc[0][0].detach().numpy()
-        curvature = curvature_dist.sample()[0, 0]
-        print(f"curvature: {curvature}\n")
-
-        # Step the simulated car with the same action
-        vista_step(curvature)
+        curvature_action = curvature_dist.sample()[0, 0]
+        curvature_action = curvature_action.cpu().detach()
+        vista_step(curvature_action)
         observation = grab_and_preprocess_obs(car, camera)
 
         vis_img = display.render()
@@ -99,7 +96,3 @@ for i_episode in range(num_episodes):
         i_step += 1
 
 print(f"Average reward: {(i_step - (num_reset*num_episodes)) / num_episodes}")
-
-print("Saving trajectory with trained policy...")
-# stream.save("trained_policy.mp4")
-# mdl.lab3.play_video("trained_policy.mp4")
