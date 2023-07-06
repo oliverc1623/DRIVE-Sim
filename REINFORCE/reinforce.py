@@ -252,6 +252,8 @@ class Learner:
         max_batch_size = 300
         max_reward = float("-inf")  # keep track of the maximum reward acheived during training
 
+        past_five_performance = [0, 0, 0, 0, 0]
+
         for i_episode in range(self.episodes):
             # Restart the environment
             self.world.set_seed(47) # comment if you want to use all traces
@@ -332,15 +334,22 @@ class Learner:
                     memory.clear()
                     prev_curvature = 0.0
                     time.sleep(0.1)
+                    past_five_performance.append(progress_percentage)
+                    past_five_performance.pop(0)
                     # Check gradients norms
-                    # total_norm = 0
-                    # for p in self.driving_model.parameters():
-                    #     param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
-                    #     total_norm += param_norm.item() ** 2 # accumulate the squared norm
-                    # total_norm = total_norm ** 0.5 # take the square root to get the total norm
-                    # print(f"Total gradient norm: {total_norm}\n")
+                    total_norm = 0
+                    for p in self.driving_model.parameters():
+                        param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
+                        total_norm += param_norm.item() ** 2 # accumulate the squared norm
+                    total_norm = total_norm ** 0.5 # take the square root to get the total norm
+                    print(f"Total gradient norm: {total_norm}\n")
 
                     break
+            if np.mean(past_five_performance) > 0.25:
+                print("breaking training early")
+                print(past_five_performance)
+                break
 
     def save(self):
+        print("Saving and exporting model...")
         torch.save(self.driving_model.state_dict(), f"models/{self.filename}_{self.timestamp}_.pth")
