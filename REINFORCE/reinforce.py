@@ -345,7 +345,7 @@ class Learner:
                     print(f"Total gradient norm: {total_norm}\n")
 
                     break
-            if np.mean(past_five_performance) > 0.25:
+            if np.mean(past_five_performance) > 0.95:
                 print("breaking training early")
                 print(past_five_performance)
                 break
