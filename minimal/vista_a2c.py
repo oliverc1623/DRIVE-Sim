@@ -188,7 +188,9 @@ def test(step_idx, model, world, car, display, camera, device):
     world.set_seed(47)
     vista_reset(world, display)
     score = 0.0
-    num_test = 1
+    num_test = 5
+    past_five_performance = [0, 0, 0, 0, 0]
+    save_flag = False
     for _ in range(num_test):
         step = 0
         world.set_seed(47)
@@ -209,9 +211,13 @@ def test(step_idx, model, world, car, display, camera, device):
             observation = observation_prime
             score += reward
             step += 1
+        past_five_performance.pop(0)
+        past_five_performance.append(1)
         print(f"total steps: {step}")
+        print(past_five_performance)
         done = False
     print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}\n")
+    return not save_flag if sum(past_five_performance) == 5 else save_flag
 
 def compute_target(v_final, r_lst, mask_lst):
     G = v_final.reshape(-1)
@@ -304,6 +310,8 @@ if __name__ == '__main__':
 
         if step_idx % PRINT_INTERVAL == 0:
             print("Testing...")
-            test(step_idx, model, world_test, car_test, display_test, camera_test, device)
+            save_flag = test(step_idx, model, world_test, car_test, display_test, camera_test, device)
+            if save_flag:
+                break
 
     envs.close()
