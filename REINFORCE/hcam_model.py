@@ -54,7 +54,9 @@ hidden_dim = 512
 output_dim = 5  # Number of output classes
 
 model = CNNHTMModel(input_channels, hidden_dim, output_dim)
+# TODO: Figure out how to pass in VISTA images
 input_tensor = torch.randn(1, 3, 32, 32)  # Batch size 1, RGB images of size 32x32
+# TODO: understand queries, memories, and masks
 queries = torch.randn(1, 128, hidden_dim)
 memories = torch.randn(1, 20000, hidden_dim)
 mask = torch.ones(1, 20000).bool()
