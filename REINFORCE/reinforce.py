@@ -125,7 +125,7 @@ class Learner:
         if speed is None:
             speed = self.car.trace.f_speed(self.car.timestamp)
 
-        self.car.step_dynamics(action=np.array([curvature, speed]), dt=1 / 15.0)
+        self.car.step_dynamics(action=np.array([curvature, speed]), dt=1/15.0)
         self.car.step_sensors()
 
     ### Reward function ###
@@ -135,7 +135,7 @@ class Learner:
         return x
 
     # Compute normalized, discounted, cumulative rewards (i.e., return)
-    def _discount_rewards_(self, rewards, gamma=0.75):
+    def _discount_rewards_(self, rewards, gamma=0.95):
         discounted_rewards = torch.zeros_like(rewards)
         R = 0
         for t in reversed(range(0, len(rewards))):
@@ -215,9 +215,6 @@ class Learner:
         nn.utils.clip_grad_norm_(self.driving_model.parameters(), self.clip)
         optimizer.step()
         return loss.item()
-
-    def _compute_driving_loss_(self, dist, actions, rewards):
-        pass
 
     ## The self-driving learning algorithm ##
     def _run_driving_model_(self, image):
