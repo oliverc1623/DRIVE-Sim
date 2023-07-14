@@ -308,6 +308,14 @@ if __name__ == '__main__':
         loss.backward()
         optimizer.step()
 
+        # Check gradients norms
+        # total_norm = 0
+        # for p in model.parameters():
+        #     param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
+        #     total_norm += param_norm.item() ** 2 # accumulate the squared norm
+        # total_norm = total_norm ** 0.5 # take the square root to get the total norm
+        # print(f"Total gradient norm: {total_norm}\n")
+
         if step_idx % PRINT_INTERVAL == 0:
             print("Testing...")
             save_flag = test(step_idx, model, world_test, car_test, display_test, camera_test, device)
