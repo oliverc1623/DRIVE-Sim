@@ -17,7 +17,6 @@ import torchvision.transforms as transforms
 from PIL import Image
 import cv2
 import mycnn
-import rnn
 
 device = ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 device = torch.device(device)
@@ -27,9 +26,7 @@ models = {"ResNet18": resnet.ResNet18,
           "ResNet34": resnet.ResNet34, 
           "ResNet50": resnet.ResNet50, 
           "ResNet101": resnet.ResNet101,
-          "rnn": rnn.MyRNN,
-          "CNN": mycnn.CNN,
-          "LSTM": rnn.LSTMLaneFollower}
+          "CNN": mycnn.CNN}
 
 ### Agent Memory ###
 class Memory:

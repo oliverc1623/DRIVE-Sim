@@ -1,13 +1,5 @@
 import argparse
-# from learn import Memory, Learner
-# from learn_lstm import Learner
-# from learn import Learner
 from reinforce import Learner
-# from learn_ppo import Learner 
-# from learn_gpu_pairs import Learner
-# from learn_gpu_trpo import Learner
-# from learn_gpu_ppo import Learner
-
 import matplotlib.pyplot as plt
 
 def main(args):
