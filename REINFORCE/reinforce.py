@@ -17,6 +17,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 import cv2
 import mycnn
+import ConvLSTM
 
 device = ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 device = torch.device(device)
@@ -26,7 +27,8 @@ models = {"ResNet18": resnet.ResNet18,
           "ResNet34": resnet.ResNet34, 
           "ResNet50": resnet.ResNet50, 
           "ResNet101": resnet.ResNet101,
-          "CNN": mycnn.CNN}
+          "CNN": mycnn.CNN,
+          "LSTM": ConvLSTM.LSTM}
 
 ### Agent Memory ###
 class Memory:
@@ -220,9 +222,6 @@ class Learner:
             image = image.unsqueeze(0)
 
         image = image.permute(0, 3, 1, 2)
-        if self.model_name == "LSTM" or self.model_name == "resnet":
-            image = image.unsqueeze(0)
-
         mu, logsigma = self.driving_model(image)
         mu = self.max_curvature * torch.tanh(mu)  # conversion
         sigma = self.max_std * torch.sigmoid(logsigma) + 0.005  # conversion
