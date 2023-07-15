@@ -221,7 +221,8 @@ class Learner:
         if single_image_input:
             image = image.unsqueeze(0)
 
-        image = image.permute(0, 3, 1, 2)
+        image = image.permute(0, 3, 1, 2).unsqueeze(0)
+        # print(f"image shape: {image.shape}")
         mu, logsigma = self.driving_model(image)
         mu = self.max_curvature * torch.tanh(mu)  # conversion
         sigma = self.max_std * torch.sigmoid(logsigma) + 0.005  # conversion
