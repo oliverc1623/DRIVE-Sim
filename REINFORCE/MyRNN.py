@@ -5,10 +5,10 @@ import convlstm as convLSTM
 class MyRNN(nn.Module):
     def __init__(self):
         super(MyRNN, self).__init__()
-        self.convlstm = convLSTM.ConvLSTM(3, 128, (3,3), 
-                                          4, False, True, False)
+        self.convlstm = convLSTM.ConvLSTM(3, 16, (3,3), 
+                                          1, False, True, False)
         self.flat = nn.Flatten()
-        self.lin1 = nn.Linear(128*30*32, 256)
+        self.lin1 = nn.Linear(16*30*32, 256)
         self.relu = nn.ReLU()
         self.lin2 = nn.Linear(256, 2)
         
