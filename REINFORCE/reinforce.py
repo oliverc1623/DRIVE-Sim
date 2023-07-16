@@ -134,7 +134,7 @@ class Learner:
         return x
 
     # Compute normalized, discounted, cumulative rewards (i.e., return)
-    def _discount_rewards_(self, rewards, gamma=0.95):
+    def _discount_rewards_(self, rewards, gamma=0.75):
         discounted_rewards = torch.zeros_like(rewards)
         R = 0
         for t in reversed(range(0, len(rewards))):
@@ -184,7 +184,7 @@ class Learner:
         return augmented_image
 
     def _resize_image(self, img):
-        resized_img = cv2.resize(img, (32, 30))
+        resized_img = cv2.resize(img, (80, 80))
         return resized_img
 
     def _grab_and_preprocess_obs_(self, s, i, augment=True, animate=False):
@@ -279,12 +279,14 @@ class Learner:
                 if prev_curvature == 0.0:
                     differential = 0.0
                 else:
-                    differential = -np.abs(curvature_action - prev_curvature)
-                reward = (lane_reward + differential) if not self._check_crash_() else torch.tensor(0.0)
+                    differential = -np.abs(curvature_action - prev_curvature)*20
+                rotation_reward = 1+differential
+                reward = (lane_reward + rotation_reward) if not self._check_crash_() else torch.tensor(0.0)
                 if reward < 0:
                     reward = torch.tensor(0.0)
                 prev_curvature = curvature_action
-                reward = torch.round(reward, decimals=2)
+                reward = torch.round(reward, decimals=6)
+                print(reward)
                 # add to memory
                 memory.add_to_memory(observation, memory_action, reward)
                 steps += 1
@@ -300,7 +302,9 @@ class Learner:
                     print(f"Car done: {self.car.done}\n")
 
                     batch_size = min(len(memory), max_batch_size)
-                    i = torch.randperm(len(memory))[:batch_size].to(device)
+                    # i = torch.randperm(len(memory))[:batch_size].to(device)
+                    # trying ordered sequences
+                    i = torch.arange(len(memory))[:batch_size].to(device)
 
                     batch_observations = torch.stack(memory.observations, dim=0)
                     batch_observations = torch.index_select(batch_observations, dim=0, index=i)
