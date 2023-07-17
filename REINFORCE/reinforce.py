@@ -281,12 +281,12 @@ class Learner:
                 else:
                     differential = -np.abs(curvature_action - prev_curvature)*20
                 rotation_reward = 1+differential
-                reward = (lane_reward + rotation_reward) if not self._check_crash_() else torch.tensor(0.0)
-                if reward < 0:
-                    reward = torch.tensor(0.0)
+                # reward = (lane_reward + rotation_reward) if not self._check_crash_() else torch.tensor(0.0)
+                reward = torch.tensor(1.0) if not self._check_crash_() else torch.tensor(0.0)
+                # if reward < 0:
+                    # reward = torch.tensor(0.0)
                 prev_curvature = curvature_action
-                reward = torch.round(reward, decimals=6)
-                print(reward)
+                # reward = torch.round(reward, decimals=6)
                 # add to memory
                 memory.add_to_memory(observation, memory_action, reward)
                 steps += 1
