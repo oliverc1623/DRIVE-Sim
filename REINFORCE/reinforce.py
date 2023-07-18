@@ -135,7 +135,7 @@ class Learner:
         return x
 
     # Compute normalized, discounted, cumulative rewards (i.e., return)
-    def _discount_rewards_(self, rewards, gamma=0.75):
+    def _discount_rewards_(self, rewards, gamma=0.95):
         discounted_rewards = torch.zeros_like(rewards)
         R = 0
         for t in reversed(range(0, len(rewards))):
@@ -232,12 +232,12 @@ class Learner:
         return pred_dist
 
     def learn(self):
-        self.world.set_seed(47)
+        self.world.set_seed(47) # comment if you want to use all traces
         self._vista_reset_()
         prev_curvature = 0.0
         ## Training parameters and initialization ##
         ## Re-run this cell to restart training from scratch ##
-        optimizer = optim.Adam(self.driving_model.parameters(), lr=self.learning_rate)
+        optimizer = optim.Adam(self.driving_model.parameters(), lr=self.learning_rate, weight_decay=1e-5)
         running_loss = 0
         datasize = 0
         # instantiate Memory buffer
@@ -278,14 +278,13 @@ class Learner:
                 z_lat = road_width / 2
                 lane_reward = torch.round(torch.tensor(1 - (q_lat/z_lat)**2, dtype=torch.float32), decimals=3)
                 if prev_curvature == 0.0:
-                    differential = 0.0
+                    rotation_reward = 0.0
                 else:
-                    differential = -np.abs(curvature_action - prev_curvature)*20
-                rotation_reward = 1+differential
-                # reward = (lane_reward + rotation_reward) if not self._check_crash_() else torch.tensor(0.0)
-                reward = torch.tensor(1.0) if not self._check_crash_() else torch.tensor(0.0)
-                # if reward < 0:
-                    # reward = torch.tensor(0.0)
+                    rotation_reward = -np.abs(curvature_action - prev_curvature)
+                reward = (lane_reward + rotation_reward) if not self._check_crash_() else torch.tensor(0.0)
+                # reward = torch.tensor(1.0) if not self._check_crash_() else torch.tensor(0.0)
+                if reward < 0:
+                    reward = torch.tensor(0.0)
                 prev_curvature = curvature_action
                 # reward = torch.round(reward, decimals=6)
                 # add to memory
@@ -299,7 +298,7 @@ class Learner:
                     progress = self.car.frame_index - initial_frame
                     progress_percentage = np.round(progress/track_left, 4)
                     print(f"steps: {steps}")
-                    print(f"progress percentage: {progress_percentage}")
+                    print(f"progress percentage: {progress_percentage*100:.2f}%")
                     print(f"Car done: {self.car.done}\n")
 
                     batch_size = min(len(memory), max_batch_size)
