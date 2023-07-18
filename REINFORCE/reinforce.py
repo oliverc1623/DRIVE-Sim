@@ -18,6 +18,7 @@ from PIL import Image
 import cv2
 import mycnn
 import MyRNN
+import convlstm2
 
 device = ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 device = torch.device(device)
@@ -28,7 +29,7 @@ models = {"ResNet18": resnet.ResNet18,
           "ResNet50": resnet.ResNet50, 
           "ResNet101": resnet.ResNet101,
           "CNN": mycnn.CNN,
-          "LSTM": MyRNN.MyRNN}
+          "LSTM": convlstm2.CNNLSTM}
 
 ### Agent Memory ###
 class Memory:
@@ -184,7 +185,7 @@ class Learner:
         return augmented_image
 
     def _resize_image(self, img):
-        resized_img = cv2.resize(img, (80, 80))
+        resized_img = cv2.resize(img, (32, 30))
         return resized_img
 
     def _grab_and_preprocess_obs_(self, s, i, augment=True, animate=False):
@@ -220,9 +221,9 @@ class Learner:
         single_image_input = len(image.shape) == 3  # missing 4th batch dimension
         if single_image_input:
             image = image.unsqueeze(0)
-
-        image = image.permute(0, 3, 1, 2).unsqueeze(0)
-        # print(f"image shape: {image.shape}")
+            image = image.permute(0, 3, 1, 2).unsqueeze(0)
+        else:
+            image = image.permute(0,3,1,2).unsqueeze(0).permute(1,0,2,3,4)
         mu, logsigma = self.driving_model(image)
         mu = self.max_curvature * torch.tanh(mu)  # conversion
         sigma = self.max_std * torch.sigmoid(logsigma) + 0.005  # conversion
@@ -332,16 +333,15 @@ class Learner:
                     # reset the memory
                     memory.clear()
                     prev_curvature = 0.0
-                    time.sleep(0.1)
                     past_five_performance.append(progress_percentage)
                     past_five_performance.pop(0)
                     # Check gradients norms
-                    total_norm = 0
-                    for p in self.driving_model.parameters():
-                        param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
-                        total_norm += param_norm.item() ** 2 # accumulate the squared norm
-                    total_norm = total_norm ** 0.5 # take the square root to get the total norm
-                    print(f"Total gradient norm: {total_norm}\n")
+                    # total_norm = 0
+                    # for p in self.driving_model.parameters():
+                    #     param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
+                    #     total_norm += param_norm.item() ** 2 # accumulate the squared norm
+                    # total_norm = total_norm ** 0.5 # take the square root to get the total norm
+                    # print(f"Total gradient norm: {total_norm}\n")
 
                     break
             if np.mean(past_five_performance) > 0.95:
