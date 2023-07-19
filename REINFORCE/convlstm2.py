@@ -29,18 +29,18 @@ class CNNLSTM(nn.Module):
         self.fc1 = nn.Linear(256, 128)
         self.fc2 = nn.Linear(128, num_classes)
 
-    def forward(self, x):
+    def forward(self, input_x):
         hidden = None
-        for t in range(x.size(1)):
-            with torch.no_grad():
-                x = x[:, t, :, :, :]
-                x = self.relu1(self.norm1(self.conv1(x)))
-                x = self.relu2(self.norm2(self.conv2(x)))
-                x = self.relu3(self.norm3(self.conv3(x)))
-                x = self.relu4(self.norm4(self.conv4(x)))
-                x = self.relu5(self.norm5(self.conv5(x)))
-                x = x.reshape(x.size(0), -1)
-                x = self.fc(x)
+        for t in range(input_x.size(1)):
+            # with torch.no_grad():
+            x = input_x[:, t, :, :, :]
+            x = self.relu1(self.norm1(self.conv1(x)))
+            x = self.relu2(self.norm2(self.conv2(x)))
+            x = self.relu3(self.norm3(self.conv3(x)))
+            x = self.relu4(self.norm4(self.conv4(x)))
+            x = self.relu5(self.norm5(self.conv5(x)))
+            x = x.reshape(x.size(0), -1)
+            x = self.fc(x)
             out, hidden = self.lstm(x.unsqueeze(0), hidden)
         x = self.fc1(out[-1, :, :])
         x = F.relu(x)
