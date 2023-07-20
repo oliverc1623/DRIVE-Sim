@@ -45,7 +45,7 @@ pip install pyglet==1.5.11
 7. Install xvfb
 
 ```
-sudo apt install xvfb 
+sudo apt-get install -y xvfb python-opengl x11-utils &> /dev/null
 ```
 
 Run to list xvfb processes:
