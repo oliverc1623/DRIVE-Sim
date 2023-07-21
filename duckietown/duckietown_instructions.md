@@ -17,7 +17,7 @@ conda create --name [env name] python=3.9
 3. Activate Conda by calling Source
 
 ```
-Source /opt/conda/bin/activate [env name]
+source /opt/conda/bin/activate [env name]
 ```
 
 4. Upgrade pip
