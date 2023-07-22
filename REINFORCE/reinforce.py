@@ -223,7 +223,7 @@ class Learner:
             image = image.unsqueeze(0)
             image = image.permute(0, 3, 1, 2).unsqueeze(0)
         else:
-            image = image.permute(0,3,1,2).unsqueeze(0).permute(1,0,2,3,4)
+            image = image.permute(0,3,1,2).unsqueeze(0)
         mu, logsigma = self.driving_model(image)
         mu = self.max_curvature * torch.tanh(mu)  # conversion
         sigma = self.max_std * torch.sigmoid(logsigma) + 0.005  # conversion
@@ -335,13 +335,13 @@ class Learner:
                     past_five_performance.append(progress_percentage)
                     past_five_performance.pop(0)
                     # Check gradients norms
-                    # total_norm = 0
-                    # for p in self.driving_model.parameters():
-                    #     param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
-                    #     total_norm += param_norm.item() ** 2 # accumulate the squared norm
-                    # total_norm = total_norm ** 0.5 # take the square root to get the total norm
-                    # print(f"Total gradient norm: {total_norm}\n")
-
+                    total_norm = 0
+                    for name, p in self.driving_model.named_parameters():
+                        if p.requires_grad and not p.grad is None:
+                            param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
+                            total_norm += param_norm.item() ** 2 # accumulate the squared norm
+                    total_norm = total_norm ** 0.5 # take the square root to get the total norm
+                    print(f"Total gradient norm: {total_norm}\n")
                     break
             if np.mean(past_five_performance) > 0.95:
                 print("breaking training early")
