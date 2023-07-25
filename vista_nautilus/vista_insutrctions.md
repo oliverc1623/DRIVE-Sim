@@ -36,6 +36,12 @@ Remember that if you're running this on a server or headless environment, you mi
 export DISPLAY=:1
 ```
 
+Run to list xvfb processes:
+
+```
+ps aux | grep Xvfb
+```
+
 4. Install torch 
 
 ```
