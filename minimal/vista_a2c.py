@@ -188,8 +188,7 @@ def test(step_idx, model, world, car, display, camera, device):
     world.set_seed(47)
     vista_reset(world, display)
     score = 0.0
-    num_test = 5
-    past_five_performance = [0, 0, 0, 0, 0]
+    num_test = 1
     save_flag = False
     for _ in range(num_test):
         step = 0
@@ -198,6 +197,7 @@ def test(step_idx, model, world, car, display, camera, device):
         observation = grab_and_preprocess_obs(car, camera)
         done = False
         prev_curvature = 0.0
+        total_reward= 0.0
         while not done:
             mu, sigma = model.pi(observation.permute(2,0,1))
             dist = Normal(mu, sigma)
@@ -206,18 +206,16 @@ def test(step_idx, model, world, car, display, camera, device):
             prev_curvature = action
             observation_prime = grab_and_preprocess_obs(car, camera)
             reward = calculate_reward(car, action, prev_curvature)
+            total_reward += reward
             done = int(check_crash(car))
 
             observation = observation_prime
             score += reward
             step += 1
-        past_five_performance.pop(0)
-        past_five_performance.append(1)
         print(f"total steps: {step}")
-        print(past_five_performance)
         done = False
     print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}\n")
-    return not save_flag if sum(past_five_performance) == 5 else save_flag
+    return total_reward
 
 def compute_target(v_final, r_lst, mask_lst):
     G = v_final.reshape(-1)
@@ -260,10 +258,10 @@ if __name__ == '__main__':
     display_test = vista.Display(
         world_test, display_config={"gui_scale": 2, "vis_full_frame": False}
     )
-    ### 
 
     step_idx = 0
     s = envs.reset()
+    best_reward = float("-inf")
     while step_idx < max_train_steps:
         s_lst, a_lst, r_lst, mask_lst, s_primes = list(), list(), list(), list(), list()
         for _ in range(update_interval):
@@ -318,8 +316,16 @@ if __name__ == '__main__':
 
         if step_idx % PRINT_INTERVAL == 0:
             print("Testing...")
-            save_flag = test(step_idx, model, world_test, car_test, display_test, camera_test, device)
-            if save_flag:
-                break
+            total_reward = test(step_idx, model, world_test, car_test, display_test, camera_test, device)
+            if total_reward > best_reward:
+                best_reward = total_reward
+                print("Saving and exporting model...")
+                checkpoint = {
+                    'epoch': step_idx,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'best_accuracy': total_reward,
+                }
+                torch.save(checkpoint, 'best_a2c_model_checkpoint.pth')
 
     envs.close()
