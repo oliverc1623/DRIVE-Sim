@@ -59,7 +59,7 @@ class Learner:
         self, model_name, learning_rate, episodes, clip, animate, algorithm, filename, max_curvature=1/8.0, max_std=0.1
     ) -> None:
         # Set up VISTA simulator
-        trace_root = "vista_traces"
+        trace_root = "../vista_traces"
         trace_path = [
             "20210726-154641_lexus_devens_center",
             "20210726-155941_lexus_devens_center_reverse",
