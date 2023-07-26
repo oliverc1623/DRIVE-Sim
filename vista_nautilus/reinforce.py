@@ -18,6 +18,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 import cv2
 import models.mycnn as mycnn
+import models.convlstm2 as convlstm2
 
 device = ("cuda" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
@@ -29,7 +30,8 @@ print(f"Using {device} device")
 #           "ResNet101": resnet.ResNet101,
 #           "CNN": mycnn.CNN,
 #           "LSTM": convlstm2.CNNLSTM}
-models = {"CNN": mycnn.CNN}
+models = {"CNN": mycnn.CNN,
+          "LSTM": convlstm2.CNNLSTM}
 
 ### Agent Memory ###
 class Memory:
@@ -110,7 +112,7 @@ class Learner:
         if not os.path.exists(model_results_dir):
             os.makedirs(model_results_dir)
         # Define the file path
-        print(self.filename + ".txt")
+        print("Writing log to: " + self.filename + ".txt")
         file_path = os.path.join(model_results_dir, self.filename + ".txt")
         self.f = open(file_path, "w")
         self.f.write("reward\tloss\tsteps\ttrace\tdone\tcompleted\n")
@@ -223,7 +225,8 @@ class Learner:
             image = image.unsqueeze(0)
         if self.model_name == "LSTM":
             image = image.permute(0,3,1,2).unsqueeze(0)
-        image = image.permute(0,3,1,2)
+        else:
+            image = image.permute(0,3,1,2)
         mu, logsigma = self.driving_model(image)
         mu = self.max_curvature * torch.tanh(mu)  # conversion
         sigma = self.max_std * torch.sigmoid(logsigma) + 0.005  # conversion
@@ -325,6 +328,15 @@ class Learner:
                     # Write reward and loss to results txt file
                     self.f.write(f"{total_reward}\t{running_loss}\t{steps}\t{trace_index}\t{self.car.done}\t{progress_percentage}\n")
                     self.f.flush()
+                    
+                    # Check gradients norms
+                    total_norm = 0
+                    for name, p in self.driving_model.named_parameters():
+                        if p.requires_grad and not p.grad is None:
+                            param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
+                            total_norm += param_norm.item() ** 2 # accumulate the squared norm
+                    total_norm = total_norm ** 0.5 # take the square root to get the total norm
+                    print(f"Total gradient norm: {total_norm}\n")
 
                     # save model if best
                     if total_reward > best_reward:
@@ -340,7 +352,9 @@ class Learner:
 
                     # reset the memory
                     memory.clear()
-                    prev_curvature = 0.0                    
+                    prev_curvature = 0.0        
+
+                    break
 
     def save(self):
         print("Saving and exporting model...")
