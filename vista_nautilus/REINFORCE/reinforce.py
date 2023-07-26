@@ -17,8 +17,10 @@ import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
 import cv2
-import models.mycnn as mycnn
-import models.convlstm2 as convlstm2
+import sys
+sys.path.insert(1, '../vista_nautilus/models/')
+import convlstm2
+import mycnn
 
 device = ("cuda" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
@@ -59,7 +61,7 @@ class Learner:
         self, model_name, learning_rate, episodes, clip, animate, algorithm, filename, max_curvature=1/8.0, max_std=0.1
     ) -> None:
         # Set up VISTA simulator
-        trace_root = "../vista_traces"
+        trace_root = "vista_traces"
         trace_path = [
             "20210726-154641_lexus_devens_center",
             "20210726-155941_lexus_devens_center_reverse",
@@ -350,7 +352,7 @@ class Learner:
                             'optimizer_state_dict': optimizer.state_dict(),
                             'best_accuracy': total_reward,
                         }
-                        torch.save(checkpoint, 'REINFORCE_CNN_model.pth')
+                        torch.save(checkpoint, f"saved_models/REINFORCE_{self.filename}_{self.timestamp}.pth")
 
                     # reset the memory
                     memory.clear()
