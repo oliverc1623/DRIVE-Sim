@@ -59,7 +59,7 @@ class Learner:
         self, model_name, learning_rate, episodes, clip, animate, algorithm, filename, max_curvature=1/8.0, max_std=0.1
     ) -> None:
         # Set up VISTA simulator
-        trace_root = "vista_traces"
+        trace_root = "../vista_traces"
         trace_path = [
             "20210726-154641_lexus_devens_center",
             "20210726-155941_lexus_devens_center_reverse",
@@ -302,9 +302,11 @@ class Learner:
                     print(f"Car done: {self.car.done}\n")
 
                     batch_size = min(len(memory), max_batch_size)
+                    # if self.model_name == "LSTM":
+                    #     i = torch.arange(len(memory))[:batch_size].to(device)
+                    # else:
+                    #     print("shuffling batch")
                     i = torch.randperm(len(memory))[:batch_size].to(device)
-                    # trying ordered sequences
-                    # i = torch.arange(len(memory))[:batch_size].to(device)
 
                     batch_observations = torch.stack(memory.observations, dim=0)
                     batch_observations = torch.index_select(batch_observations, dim=0, index=i)

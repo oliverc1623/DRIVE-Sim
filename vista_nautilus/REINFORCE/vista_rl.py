@@ -13,7 +13,6 @@ def main(args):
                     args.algorithm,
                     args.filename)
     learner.learn()
-    learner.save()
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description="VISTA Deep Reinforcement Learner")
@@ -22,8 +21,7 @@ if __name__=="__main__":
     parser.add_argument("-e", "--episodes", default=500, type=int)
     parser.add_argument("-c", "--clip", default=2, type=int)
     parser.add_argument("-a", "--animate", default=False, action='store_true', help='Bool type')
-    parser.add_argument("--algorithm", default='vpg')
+    parser.add_argument("--algorithm", default='REINFORCE')
     parser.add_argument("-f", "--filename")
     args = parser.parse_args()
     main(args)
-
