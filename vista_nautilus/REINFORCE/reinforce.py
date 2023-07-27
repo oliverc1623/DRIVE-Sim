@@ -1,8 +1,10 @@
+import os
+os.environ["DISPLAY"] = ":1"
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import matplotlib
 # matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import vista
-import os
 import torch
 from torch import nn
 import numpy as np
@@ -11,24 +13,26 @@ import torch.distributions as dist
 import torch.optim as optim
 import time
 import datetime
-import resnet
 import torch.nn.functional as F
 import torchvision.transforms as transforms
 from PIL import Image
 import cv2
-import mycnn
-import MyRNN
+import sys
+sys.path.insert(1, '../vista_nautilus/models/')
 import convlstm2
+import mycnn
 
-device = ("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+device = ("cuda" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
-models = {"ResNet18": resnet.ResNet18, 
-          "ResNet34": resnet.ResNet34, 
-          "ResNet50": resnet.ResNet50, 
-          "ResNet101": resnet.ResNet101,
-          "CNN": mycnn.CNN,
+# models = {"ResNet18": resnet.ResNet18, 
+#           "ResNet34": resnet.ResNet34, 
+#           "ResNet50": resnet.ResNet50, 
+#           "ResNet101": resnet.ResNet101,
+#           "CNN": mycnn.CNN,
+#           "LSTM": convlstm2.CNNLSTM}
+models = {"CNN": mycnn.CNN,
           "LSTM": convlstm2.CNNLSTM}
 
 ### Agent Memory ###
@@ -57,7 +61,7 @@ class Learner:
         self, model_name, learning_rate, episodes, clip, animate, algorithm, filename, max_curvature=1/8.0, max_std=0.1
     ) -> None:
         # Set up VISTA simulator
-        trace_root = "trace"
+        trace_root = "vista_traces"
         trace_path = [
             "20210726-154641_lexus_devens_center",
             "20210726-155941_lexus_devens_center_reverse",
@@ -75,7 +79,7 @@ class Learner:
                 "lookahead_road": True,
             }
         )
-        self.camera = self.car.spawn_camera(config={"size": (200, 320)})
+        self.camera = self.car.spawn_camera(config={"size": (355, 413)})
         self.display = vista.Display(
             self.world, display_config={"gui_scale": 2, "vis_full_frame": False}
         )
@@ -110,7 +114,7 @@ class Learner:
         if not os.path.exists(model_results_dir):
             os.makedirs(model_results_dir)
         # Define the file path
-        print(self.filename + ".txt")
+        print("Writing log to: " + self.filename + ".txt")
         file_path = os.path.join(model_results_dir, self.filename + ".txt")
         self.f = open(file_path, "w")
         self.f.write("reward\tloss\tsteps\ttrace\tdone\tcompleted\n")
@@ -191,17 +195,17 @@ class Learner:
     def _grab_and_preprocess_obs_(self, s, i, augment=True, animate=False):
         full_obs = self.car.observations[self.camera.name]
         cropped_obs = self._preprocess_(full_obs)
-        resized_obs = self._resize_image(cropped_obs)
+        # print(f"cropped image size: {cropped_obs.shape}")
         if animate and i%5==0:
             self.display.render()
             plt.tight_layout(pad=0)
             plt.savefig(self.model_frame_dir + f"frame_episode_{i:03d}_step_{s:04d}.png", bbox_inches="tight")
         if augment:
-            augmented_obs = self._augment_image(resized_obs)
+            augmented_obs = self._augment_image(cropped_obs)
             return augmented_obs.to(torch.float32)
         else:
-            resized_obs_torch = resized_obs / 255.0
-            return resized_obs, torch.from_numpy(resized_obs_torch).to(torch.float32).to(device)
+            cropped_obs_torch = cropped_obs / 255.0
+            return cropped_obs, torch.from_numpy(cropped_obs_torch).to(torch.float32).to(device)
 
     ### Training step (forward and backpropagation) ###
     def _train_step_(self, optimizer, observations, actions, discounted_rewards):
@@ -221,13 +225,13 @@ class Learner:
         single_image_input = len(image.shape) == 3  # missing 4th batch dimension
         if single_image_input:
             image = image.unsqueeze(0)
-            image = image.permute(0, 3, 1, 2).unsqueeze(0)
-        else:
+        if self.model_name == "LSTM":
             image = image.permute(0,3,1,2).unsqueeze(0)
+        else:
+            image = image.permute(0,3,1,2)
         mu, logsigma = self.driving_model(image)
         mu = self.max_curvature * torch.tanh(mu)  # conversion
         sigma = self.max_std * torch.sigmoid(logsigma) + 0.005  # conversion
-
         pred_dist = dist.Normal(mu, sigma)
         return pred_dist
 
@@ -245,9 +249,7 @@ class Learner:
 
         ## Driving training! Main training block. ##
         max_batch_size = 300
-        max_reward = float("-inf")  # keep track of the maximum reward acheived during training
-
-        past_five_performance = [0, 0, 0, 0, 0]
+        best_reward = float("-inf")  # keep track of the maximum reward acheived during training
 
         for i_episode in range(self.episodes):
             # Restart the environment
@@ -261,8 +263,8 @@ class Learner:
             steps = 0
             _, observation = self._grab_and_preprocess_obs_(steps, i_episode, augment=False, animate=self.animate)
             print(f"Episode: {i_episode}")
+            self.driving_model.eval()
             while True:
-                self.driving_model.eval()
                 curvature_dist = self._run_driving_model_(observation)
                 memory_action = curvature_dist.sample()[0,0]
                 curvature_action = memory_action.cpu().detach()
@@ -302,9 +304,11 @@ class Learner:
                     print(f"Car done: {self.car.done}\n")
 
                     batch_size = min(len(memory), max_batch_size)
-                    # i = torch.randperm(len(memory))[:batch_size].to(device)
-                    # trying ordered sequences
-                    i = torch.arange(len(memory))[:batch_size].to(device)
+                    # if self.model_name == "LSTM":
+                    #     i = torch.arange(len(memory))[:batch_size].to(device)
+                    # else:
+                    #     print("shuffling batch")
+                    i = torch.randperm(len(memory))[:batch_size].to(device)
 
                     batch_observations = torch.stack(memory.observations, dim=0)
                     batch_observations = torch.index_select(batch_observations, dim=0, index=i)
@@ -328,12 +332,7 @@ class Learner:
                     # Write reward and loss to results txt file
                     self.f.write(f"{total_reward}\t{running_loss}\t{steps}\t{trace_index}\t{self.car.done}\t{progress_percentage}\n")
                     self.f.flush()
-
-                    # reset the memory
-                    memory.clear()
-                    prev_curvature = 0.0
-                    past_five_performance.append(progress_percentage)
-                    past_five_performance.pop(0)
+                    
                     # Check gradients norms
                     total_norm = 0
                     for name, p in self.driving_model.named_parameters():
@@ -342,11 +341,24 @@ class Learner:
                             total_norm += param_norm.item() ** 2 # accumulate the squared norm
                     total_norm = total_norm ** 0.5 # take the square root to get the total norm
                     print(f"Total gradient norm: {total_norm}\n")
+
+                    # save model if best
+                    if total_reward > best_reward:
+                        best_reward = total_reward
+                        print("Saving and exporting model...")
+                        checkpoint = {
+                            'epoch': i_episode,
+                            'model_state_dict': self.driving_model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'best_accuracy': total_reward,
+                        }
+                        torch.save(checkpoint, f"saved_models/REINFORCE_{self.filename}_{self.timestamp}.pth")
+
+                    # reset the memory
+                    memory.clear()
+                    prev_curvature = 0.0        
+
                     break
-            if np.mean(past_five_performance) > 0.95:
-                print("breaking training early")
-                print(past_five_performance)
-                break
 
     def save(self):
         print("Saving and exporting model...")

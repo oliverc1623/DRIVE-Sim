@@ -1,88 +1,35 @@
 import os
 os.environ["DISPLAY"] = ":2"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
-import gymnasium as gym
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torch.distributions import Normal
 import torch.multiprocessing as mp
-import numpy as np
+
 import vista
-import os
 from vista_helper import *
-import matplotlib.pyplot as plt
-import cv2
 from vista.entities.agents.Dynamics import curvature2tireangle
 from vista.entities.agents.Dynamics import curvature2steering
+import sys
+sys.path.insert(1, '../vista_nautilus/models/')
+import a2c_cnn
+
+import numpy as np
+import datetime
+import matplotlib.pyplot as plt
+import cv2
 
 # Hyperparameters
+# TODO: make hyperparameters args
 n_train_processes = 3
 learning_rate = 0.0005
-update_interval = 10 #100
+update_interval = 10 # 100
 gamma = 0.95
 max_train_steps = 60000
 PRINT_INTERVAL = 5
-
-class ActorCritic(nn.Module):
-    def __init__(self):
-        super(ActorCritic, self).__init__()
-        self.conv1 = nn.Conv2d(3, 24, kernel_size=3, stride=1, padding=1)
-        self.norm1 = nn.GroupNorm(8, 24)
-        self.relu1 = nn.ReLU()
-        self.conv2 = nn.Conv2d(24, 36, kernel_size=3, stride=1, padding=1)
-        self.norm2 = nn.GroupNorm(9, 36)
-        self.relu2 = nn.ReLU()
-        self.conv3 = nn.Conv2d(36, 48, kernel_size=3, stride=1, padding=1)
-        self.norm3 = nn.GroupNorm(12, 48)
-        self.relu3 = nn.ReLU()
-        self.conv4 = nn.Conv2d(48, 64, kernel_size=3, stride=1, padding=1)
-        self.norm4 = nn.GroupNorm(64, 64)
-        self.relu4 = nn.ReLU()
-        self.conv5 = nn.Conv2d(64, 2, kernel_size=3, stride=1, padding=1)
-        self.norm5 = nn.GroupNorm(1, 2)
-        self.relu5 = nn.ReLU()
-        self.fc1 = nn.Linear(2 * 80 * 200, 100)
-        self.relu6 = nn.ReLU()
-        self.fc2 = nn.Linear(100, 100)
-        self.relu7 = nn.ReLU() 
-        self.fc3 = nn.Linear(100, 2)
-
-        self.fc_v = nn.Linear(100, 1)
-
-    def pi(self, x):
-        single_image_input = len(x.shape) == 3  # missing 4th batch dimension
-        if single_image_input:
-            x = x.unsqueeze(0)
-        else:
-            x = x.permute(0, 3, 1, 2)
-        x = self.relu1(self.norm1(self.conv1(x)))
-        x = self.relu2(self.norm2(self.conv2(x)))
-        x = self.relu3(self.norm3(self.conv3(x)))
-        x = self.relu4(self.norm4(self.conv4(x)))
-        x = self.relu5(self.norm5(self.conv5(x)))
-        x = x.reshape(x.size(0), -1)
-        x = self.relu6(self.fc1(x))
-        x = self.relu7(self.fc2(x))
-        x = self.fc3(x)
-        mu, log_sigma = torch.chunk(x, 2, dim=-1)
-        mu = 1/8.0 * torch.tanh(mu)  # conversion
-        sigma = 0.1 * torch.sigmoid(log_sigma) + 0.005  # conversion
-        return mu, sigma
-    
-    def v(self, x):
-        x = x.permute(0, 3, 1, 2)
-        x = self.relu1(self.norm1(self.conv1(x)))
-        x = self.relu2(self.norm2(self.conv2(x)))
-        x = self.relu3(self.norm3(self.conv3(x)))
-        x = self.relu4(self.norm4(self.conv4(x)))
-        x = self.relu5(self.norm5(self.conv5(x)))
-        x = x.reshape(x.size(0), -1)
-        x = self.relu6(self.fc1(x))
-        x = self.relu7(self.fc2(x))
-        v = self.fc_v(x)
-        return v
 
 def worker(worker_id, master_end, worker_end):
     master_end.close()  # Forbid worker to use the master end for messaging
@@ -196,10 +143,11 @@ class ParallelEnv:
             self.closed = True
 
 def test(step_idx, model, world, car, display, camera, device):
+    print("Testing...")
     world.set_seed(47)
     vista_reset(world, display)
     score = 0.0
-    num_test = 1
+    num_test = 5
     save_flag = False
     for _ in range(num_test):
         step = 0
@@ -208,7 +156,6 @@ def test(step_idx, model, world, car, display, camera, device):
         observation = grab_and_preprocess_obs(car, camera)
         done = False
         prev_curvature = 0.0
-        total_reward = 0.0
         while not done:
             mu, sigma = model.pi(observation.permute(2,0,1).to(device))
             dist = Normal(mu, sigma)
@@ -217,7 +164,6 @@ def test(step_idx, model, world, car, display, camera, device):
             prev_curvature = action
             observation_prime = grab_and_preprocess_obs(car, camera)
             reward = calculate_reward(car, action, prev_curvature)
-            total_reward += reward            
             done = int(check_crash(car))
 
             observation = observation_prime
@@ -225,7 +171,7 @@ def test(step_idx, model, world, car, display, camera, device):
             step += 1
         done = False
     print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}\n")
-    return total_reward
+    return score/num_test # return avg score
 
 def compute_target(v_final, r_lst, mask_lst):
     G = v_final.reshape(-1)
@@ -241,8 +187,11 @@ if __name__ == '__main__':
     device = ("cuda:1" if torch.cuda.is_available() else "cpu")
     print('device:{}'.format(device))
     envs = ParallelEnv(n_train_processes)
+    
+    now = datetime.datetime.now()
+    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
 
-    model = ActorCritic().to(device)
+    model = a2c_cnn.ActorCritic().to(device)
     print(model)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
@@ -300,7 +249,7 @@ if __name__ == '__main__':
         v_final = model.v(s_final.to(device)).detach().cpu().clone().numpy()
         td_target = compute_target(v_final, r_lst, mask_lst)
         td_target_vec = td_target.reshape(-1)
-        s_lst = [torch.tensor(x).to(device) for x in s_lst]
+        s_lst = [x.to(device) for x in s_lst]
         s_vec = torch.stack(s_lst, dim=0)
         s_vec = s_vec.view(s_vec.shape[0] * s_vec.shape[1], 80, 200, 3)
         vs = model.v(s_vec).squeeze(1)
@@ -319,14 +268,6 @@ if __name__ == '__main__':
         loss.backward()
         optimizer.step()
 
-        # Check gradients norms
-        # total_norm = 0
-        # for p in model.parameters():
-        #     param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
-        #     total_norm += param_norm.item() ** 2 # accumulate the squared norm
-        # total_norm = total_norm ** 0.5 # take the square root to get the total norm
-        # print(f"Total gradient norm: {total_norm}\n")
-
         if step_idx % PRINT_INTERVAL == 0:
             total_reward = test(step_idx, model, world_test, car_test, display_test, camera_test, device)
             if total_reward > best_reward:
@@ -338,6 +279,6 @@ if __name__ == '__main__':
                     'optimizer_state_dict': optimizer.state_dict(),
                     'best_accuracy': total_reward,
                 }
-                torch.save(checkpoint, 'best_a2c_model_checkpoint.pth')
+                torch.save(checkpoint, f"saved_models/a2c_cnn_model_{timestamp}.pth")
 
     envs.close()
