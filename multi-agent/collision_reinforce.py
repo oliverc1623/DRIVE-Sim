@@ -67,7 +67,7 @@ def my_reward_fn(task, agent_id, **kwargs):
     overlap = compute_overlap(poly, other_polys) / poly.area
 
     reward = lane_reward - overlap[0]
-    return reward, {}
+    return (reward, kwargs), {}
 
 def calculate_jitter_reward(steering_history):
     first_derivative = np.gradient(steering_history)
@@ -227,24 +227,29 @@ for i_episode in range(episodes):
         curvature_dist = run_driving_model(driving_model, observation, max_curvature, max_std)
         actions = sample_actions(curvature_dist, env.world)
         observations, rewards, dones, infos = env.step(actions)
+        reward = rewards[env.ego_agent.id][0]
+        terminal_conditions = rewards[env.ego_agent.id][1]
 
         steering = env.ego_agent.ego_dynamics.steering
         steering_history.append(steering)
         jitter_reward = calculate_jitter_reward(steering_history)
         observation = grab_and_preprocess_obs(observations, env)
-        done = dones[env.ego_agent.id]
-        reward = 0.0 if done else rewards[env.ego_agent.id] + jitter_reward
+        done = terminal_conditions['done']
+        reward = 0.0 if done else reward + jitter_reward
         curvature = actions[env.ego_agent.id][0]
 
         memory.add_to_memory(observation, torch.tensor(curvature,dtype=torch.float32), reward)
         steps +=1
 
         if done:
-            print(done)
             driving_model.train()
             total_reward = sum(memory.rewards)
+            for key, value in terminal_conditions.items():
+                if value:
+                    print(f"{key}: {value}")
             print(f"total reward: {total_reward}")
             print(f"steps: {steps}\n")
+
             batch_size = min(len(memory), max_batch_size)
             i = torch.randperm(len(memory))[:batch_size].to(device)
 
