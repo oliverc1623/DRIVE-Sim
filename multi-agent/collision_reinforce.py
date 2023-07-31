@@ -66,7 +66,7 @@ def my_reward_fn(task, agent_id, **kwargs):
     other_polys = list(map(agent2poly, other_agents))
     overlap = compute_overlap(poly, other_polys) / poly.area
 
-    reward = lane_reward - overlap
+    reward = lane_reward - overlap[0]
     return reward, {}
 
 def calculate_jitter_reward(steering_history):
@@ -198,20 +198,41 @@ memory = Memory()
 max_batch_size = 300
 best_reward = float("-inf")  # keep track of the maximum reward acheived during training
 
-for i_episode in range(2):
+for i_episode in range(episodes):
     print(f"Episode: {i_episode}")
     env.world.set_seed(47) 
     observation = env.reset();
     display.reset()
     observation = grab_and_preprocess_obs(observation, env)
+    steering_history = [0.0]
     driving_model.eval() # set to eval for inference loop
     steps = 0
-    done = False
 
     while True:
-        print(observation.shape)
         curvature_dist = run_driving_model(driving_model, observation, max_curvature, max_std)
         actions = sample_actions(curvature_dist, env.world)
-        print(actions)
         observations, rewards, dones, infos = env.step(actions)
-        observation = grab_and_preprocess_obs(steps, i_episode)
+
+        steering = env.ego_agent.ego_dynamics.steering
+        steering_history.append(steering)
+        jitter_reward = calculate_jitter_reward(steering_history)
+        observation = grab_and_preprocess_obs(observations, env)
+        done = dones[env.ego_agent.id]
+        reward = 0 if done else rewards[env.ego_agent.id] + jitter_reward
+        curvature = actions[env.ego_agent.id][0]
+
+        memory.add_to_memory(observation, curvature, reward)
+
+        img = display.render()
+        cv2.imshow("test", img[:, :, ::-1])
+        key = cv2.waitKey(20)
+        plt.pause(.05)
+        if key == ord('q'):
+            break
+
+        if done:
+            print(done)
+            driving_model.train()
+            total_reward = sum(memory.rewards)
+            
+            break
