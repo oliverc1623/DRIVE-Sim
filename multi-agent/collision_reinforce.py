@@ -10,6 +10,8 @@ from typing import List
 import torch
 import torch.distributions as dist
 import torch.nn as nn
+import torch.optim as optim
+from light_cnn import CNN
 
 import vista
 from vista.entities.sensors.camera_utils.ViewSynthesis import DepthModes
@@ -82,13 +84,14 @@ def vista_step(car, curvature=None, speed=None):
     car.step_dynamics(action=np.array([curvature, speed]), dt=1/15.0)
     car.step_sensors()
 
-def preprocess(env, full_obs):
+def preprocess(full_obs, env):
     # Extract ROI
     i1, j1, i2, j2 = env.ego_agent.sensors[0].camera_param.get_roi()
     obs = full_obs[i1:i2, j1:j2]
     return obs
 
 def grab_and_preprocess_obs(observation, env):
+    observation = observation[env.ego_agent.id]['camera_front']
     cropped_obs = preprocess(observation, env)
     normalized_cropped = cropped_obs / 255.0
     return torch.from_numpy(normalized_cropped).to(torch.float32).to(device)
@@ -117,6 +120,16 @@ def train_step(driving_model, optimizer, observations, actions, discounted_rewar
     nn.utils.clip_grad_norm_(driving_model.parameters(), clip)
     optimizer.step()
     return loss.item()
+
+def sample_actions(curvature_dist, world):
+    actions = dict()
+    for agent in world.agents:
+        if agent.id != env.ego_agent.id:
+            actions[agent.id] = np.array([0.0,0.0])
+        else:
+            curvature = curvature_dist.sample()[0,0]
+            actions[agent.id] = np.array([curvature, agent.trace.f_speed(agent.timestamp)])
+    return actions
 
 # Initialize the simulator
 trace_config = dict(
@@ -171,3 +184,34 @@ display = vista.Display(env.world, display_config=display_config)
 env.reset();
 display.reset()  # reset should be called after env reset
 
+## Training parameters and initialization ##
+driving_model = CNN()
+learning_rate = 0.00005
+episodes = 500
+max_curvature, max_std = 1/8.0, 0.1
+clip = 5
+optimizer = optim.Adam(driving_model.parameters(), lr=learning_rate, weight_decay=1e-5)
+# instantiate Memory buffer
+memory = Memory()
+
+## Driving training! Main training block. ##
+max_batch_size = 300
+best_reward = float("-inf")  # keep track of the maximum reward acheived during training
+
+for i_episode in range(2):
+    print(f"Episode: {i_episode}")
+    env.world.set_seed(47) 
+    observation = env.reset();
+    display.reset()
+    observation = grab_and_preprocess_obs(observation, env)
+    driving_model.eval() # set to eval for inference loop
+    steps = 0
+    done = False
+
+    while True:
+        print(observation.shape)
+        curvature_dist = run_driving_model(driving_model, observation, max_curvature, max_std)
+        actions = sample_actions(curvature_dist, env.world)
+        print(actions)
+        observations, rewards, dones, infos = env.step(actions)
+        observation = grab_and_preprocess_obs(steps, i_episode)
