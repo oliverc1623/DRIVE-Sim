@@ -7,6 +7,9 @@ from matplotlib import cm
 from shapely.geometry import box as Box
 from shapely import affinity
 from typing import List
+import torch
+import torch.distributions as dist
+import torch.nn as nn
 
 import vista
 from vista.entities.sensors.camera_utils.ViewSynthesis import DepthModes
@@ -14,6 +17,27 @@ from vista.utils import logging, misc
 from vista.tasks import MultiAgentBase
 from vista.utils import transform
 
+device = "cpu"
+
+### Agent Memory ###
+class Memory:
+    def __init__(self):
+        self.clear()
+
+    # Resets/restarts the memory buffer
+    def clear(self):
+        self.observations = []
+        self.actions = []
+        self.rewards = []
+
+    # Add observations, actions, rewards to memory
+    def add_to_memory(self, new_observation, new_action, new_reward):
+        self.observations.append(new_observation)
+        self.actions.append(new_action)
+        self.rewards.append(new_reward)
+
+    def __len__(self):
+        return len(self.actions)
 
 def compute_overlap(poly: Box, polys: List[Box]) -> List[float]:
     n_polys = len(polys)
@@ -42,6 +66,57 @@ def my_reward_fn(task, agent_id, **kwargs):
 
     reward = lane_reward - overlap
     return reward, {}
+
+def calculate_jitter_reward(steering_history):
+    first_derivative = np.gradient(steering_history)
+    second_derivative = np.gradient(first_derivative)
+    jitter_reward = -np.abs(second_derivative[-1])
+    return jitter_reward
+
+def vista_step(car, curvature=None, speed=None):
+    if curvature is None:
+        curvature = car.trace.f_curvature(car.timestamp)
+    if speed is None:
+        speed = car.trace.f_speed(car.timestamp)
+
+    car.step_dynamics(action=np.array([curvature, speed]), dt=1/15.0)
+    car.step_sensors()
+
+def preprocess(env, full_obs):
+    # Extract ROI
+    i1, j1, i2, j2 = env.ego_agent.sensors[0].camera_param.get_roi()
+    obs = full_obs[i1:i2, j1:j2]
+    return obs
+
+def grab_and_preprocess_obs(observation, env):
+    cropped_obs = preprocess(observation, env)
+    normalized_cropped = cropped_obs / 255.0
+    return torch.from_numpy(normalized_cropped).to(torch.float32).to(device)
+
+## The self-driving learning algorithm ##
+def run_driving_model(driving_model, image, max_curvature, max_std):
+    single_image_input = len(image.shape) == 3  # missing 4th batch dimension
+    if single_image_input:
+        image = image.unsqueeze(0)
+    image = image.permute(0,3,1,2)
+    mu, logsigma = driving_model(image)
+    mu = max_curvature * torch.tanh(mu)  # conversion
+    sigma = max_std * torch.sigmoid(logsigma) + 0.005  # conversion
+    pred_dist = dist.Normal(mu, sigma)
+    return pred_dist
+
+### Training step (forward and backpropagation) ###
+def train_step(driving_model, optimizer, observations, actions, discounted_rewards, clip):
+    optimizer.zero_grad()
+    # Forward propagate through the agent network
+    prediction = run_driving_model(observations)
+    # back propagate
+    neg_logprob = -1 * prediction.log_prob(actions)
+    loss = (neg_logprob * discounted_rewards).mean()
+    loss.backward()
+    nn.utils.clip_grad_norm_(driving_model.parameters(), clip)
+    optimizer.step()
+    return loss.item()
 
 # Initialize the simulator
 trace_config = dict(
@@ -91,3 +166,8 @@ env = MultiAgentBase(trace_paths=trace_path,
                         (task_config['n_agents'] - 1),
                         task_config=task_config)
 display = vista.Display(env.world, display_config=display_config)
+
+# start env
+env.reset();
+display.reset()  # reset should be called after env reset
+
