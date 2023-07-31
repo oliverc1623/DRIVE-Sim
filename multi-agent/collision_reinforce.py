@@ -19,7 +19,7 @@ from vista.utils import logging, misc
 from vista.tasks import MultiAgentBase
 from vista.utils import transform
 
-device = "cpu"
+device = ("mps" if torch.backends.mps.is_available() else "cpu")
 
 ### Agent Memory ###
 class Memory:
@@ -110,16 +110,16 @@ def run_driving_model(driving_model, image, max_curvature, max_std):
 
 ### Training step (forward and backpropagation) ###
 def train_step(driving_model, optimizer, observations, actions, discounted_rewards, clip):
+    max_curvature, max_std = 1/8.0, 0.1
     optimizer.zero_grad()
     # Forward propagate through the agent network
-    prediction = run_driving_model(observations)
+    prediction = run_driving_model(driving_model, observations, max_curvature, max_std)
     # back propagate
     neg_logprob = -1 * prediction.log_prob(actions)
     loss = (neg_logprob * discounted_rewards).mean()
     loss.backward()
     nn.utils.clip_grad_norm_(driving_model.parameters(), clip)
     optimizer.step()
-    return loss.item()
 
 def sample_actions(curvature_dist, world):
     actions = dict()
@@ -127,9 +127,24 @@ def sample_actions(curvature_dist, world):
         if agent.id != env.ego_agent.id:
             actions[agent.id] = np.array([0.0,0.0])
         else:
-            curvature = curvature_dist.sample()[0,0]
+            curvature = curvature_dist.sample()[0,0].cpu()
             actions[agent.id] = np.array([curvature, agent.trace.f_speed(agent.timestamp)])
     return actions
+
+def normalize(x):
+    x -= torch.mean(x)
+    x /= torch.std(x)
+    return x
+
+# Compute normalized, discounted, cumulative rewards (i.e., return)
+def discount_rewards(rewards, gamma=0.95):
+    discounted_rewards = torch.zeros_like(rewards)
+    R = 0
+    for t in reversed(range(0, len(rewards))):
+        # update the total discounted reward
+        R = R * gamma + rewards[t]
+        discounted_rewards[t] = R
+    return normalize(discounted_rewards)
 
 # Initialize the simulator
 trace_config = dict(
@@ -185,7 +200,7 @@ env.reset();
 display.reset()  # reset should be called after env reset
 
 ## Training parameters and initialization ##
-driving_model = CNN()
+driving_model = CNN().to(device)
 learning_rate = 0.00005
 episodes = 500
 max_curvature, max_std = 1/8.0, 0.1
@@ -218,21 +233,39 @@ for i_episode in range(episodes):
         jitter_reward = calculate_jitter_reward(steering_history)
         observation = grab_and_preprocess_obs(observations, env)
         done = dones[env.ego_agent.id]
-        reward = 0 if done else rewards[env.ego_agent.id] + jitter_reward
+        reward = 0.0 if done else rewards[env.ego_agent.id] + jitter_reward
         curvature = actions[env.ego_agent.id][0]
 
-        memory.add_to_memory(observation, curvature, reward)
-
-        img = display.render()
-        cv2.imshow("test", img[:, :, ::-1])
-        key = cv2.waitKey(20)
-        plt.pause(.05)
-        if key == ord('q'):
-            break
+        memory.add_to_memory(observation, torch.tensor(curvature,dtype=torch.float32), reward)
+        steps +=1
 
         if done:
             print(done)
             driving_model.train()
             total_reward = sum(memory.rewards)
-            
+            print(f"total reward: {total_reward}")
+            print(f"steps: {steps}\n")
+            batch_size = min(len(memory), max_batch_size)
+            i = torch.randperm(len(memory))[:batch_size].to(device)
+
+            batch_observations = torch.stack(memory.observations, dim=0)
+            batch_observations = torch.index_select(batch_observations, dim=0, index=i)
+
+            batch_actions = torch.stack(memory.actions).to(device)
+            batch_actions = torch.index_select(batch_actions, dim=0, index=i)
+
+            batch_rewards = torch.tensor(memory.rewards, dtype=torch.float32).to(device)
+            batch_rewards = discount_rewards(batch_rewards)[i]
+
+            train_step(
+                driving_model,
+                optimizer,
+                observations=batch_observations,
+                actions=batch_actions,
+                discounted_rewards=batch_rewards,
+                clip=clip
+            )
+
+            # reset the memory
+            memory.clear()
             break
