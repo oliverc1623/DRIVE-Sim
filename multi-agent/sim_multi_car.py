@@ -15,6 +15,49 @@ from vista.tasks import MultiAgentBase
 from vista.utils import transform
 
 
+def default_terminal_condition(task, agent_id, **kwargs):
+    """ An example definition of terminal condition. """
+
+    agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
+
+    def _check_out_of_lane():
+        road_half_width = agent.trace.road_width / 2.
+        return np.abs(agent.relative_state.x) > road_half_width
+
+    def _check_exceed_max_rot():
+        maximal_rotation = np.pi / 10.
+        return np.abs(agent.relative_state.yaw) > maximal_rotation
+
+    def _check_crash():
+        other_agents = [_a for _a in task.world.agents if _a.id != agent_id]
+        agent2poly = lambda _x: misc.agent2poly(
+            _x, ref_dynamics=agent.human_dynamics)
+        poly = agent2poly(agent)
+        other_polys = list(map(agent2poly, other_agents))
+        overlap = compute_overlap(poly, other_polys) / poly.area
+        crashed = np.any(overlap > task.config['overlap_threshold'])
+        return crashed
+
+    out_of_lane = _check_out_of_lane()
+    exceed_max_rot = _check_exceed_max_rot()
+    crashed = _check_crash()
+    done = out_of_lane or exceed_max_rot or crashed or agent.done
+    other_info = {
+        'done': done,
+        'out_of_lane': out_of_lane,
+        'exceed_max_rot': exceed_max_rot,
+        'crashed': crashed,
+    }
+
+    return done, other_info
+
+
+def default_reward_fn(task, agent_id, **kwargs):
+    """ An example definition of reward function. """
+    reward = 0 if kwargs['done'] else 1  # simply encourage survival
+
+    return reward, {}
+
 def main(args):
     # Initialize the simulator
     trace_config = dict(
@@ -41,9 +84,9 @@ def main(args):
             use_lighting=False,
         )
     ]
-    task_config = dict(n_agents=2, 
+    task_config = dict(n_agents=2,
                        mesh_dir=args.mesh_dir,
-                       init_dist_range=[6., 10.],
+                       init_dist_range=[5., 10.],
                        init_lat_noise_range=[-1., 1.])
     display_config = dict(road_buffer_size=1000, )
 
@@ -54,8 +97,7 @@ def main(args):
                          car_configs=[car_config] * task_config['n_agents'],
                          sensors_configs=[sensors_config] + [[]] *
                          (task_config['n_agents'] - 1),
-                         task_config=task_config,
-                         logging_level='DEBUG')
+                         task_config=task_config)
 
     # Run
     env.reset()
@@ -76,12 +118,19 @@ def main(args):
 
         # step environment
         observations, rewards, dones, infos = env.step(actions)
+
+        
+        print(f"obs len: {len(observations)}")
+        print(observations)
+        print(f"obs shape: {observations[0]}")
         done = np.any(list(dones.values()))
 
         # fetch priviliged information (road, all cars' states)
         privileged_info = dict()
         for agent in env.world.agents:
             privileged_info[agent.id] = fetch_privileged_info(env.world, agent)
+        print(privileged_info.keys())
+        print(privileged_info[list(privileged_info.keys())[0]])
 
         if args.visualize_privileged_info:
             for ai, (aid, pinfo) in enumerate(privileged_info.items()):
