@@ -12,6 +12,8 @@ import torch.distributions as dist
 import torch.nn as nn
 import torch.optim as optim
 from light_cnn import CNN
+from renset34 import ResNet34
+import datetime
 
 import vista
 from vista.entities.sensors.camera_utils.ViewSynthesis import DepthModes
@@ -64,7 +66,7 @@ def my_reward_fn(task, agent_id, **kwargs):
         _x, ref_dynamics=agent.human_dynamics)
     poly = agent2poly(agent).buffer(5)
     other_polys = list(map(agent2poly, other_agents))
-    overlap = compute_overlap(poly, other_polys) / poly.area
+    overlap = (compute_overlap(poly, other_polys) / poly.area) * 10
 
     reward = lane_reward - overlap[0]
     return (reward, kwargs), {}
@@ -110,7 +112,7 @@ def run_driving_model(driving_model, image, max_curvature, max_std):
 
 ### Training step (forward and backpropagation) ###
 def train_step(driving_model, optimizer, observations, actions, discounted_rewards, clip):
-    max_curvature, max_std = 1/8.0, 0.1
+    max_curvature, max_std = 1/8.0, 0.01
     optimizer.zero_grad()
     # Forward propagate through the agent network
     prediction = run_driving_model(driving_model, observations, max_curvature, max_std)
@@ -146,6 +148,40 @@ def discount_rewards(rewards, gamma=0.95):
         discounted_rewards[t] = R
     return normalize(discounted_rewards)
 
+def write_file(filename):
+    # open and write to file to track progress
+    now = datetime.datetime.now()
+    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+    results_dir = "results"
+    model_results_dir = results_dir + "/CNN/" # TODO: make this into variable
+
+    if not os.path.exists(model_results_dir):
+        os.makedirs(model_results_dir)
+    # Define the file path
+    print("Writing log to: " + filename + ".txt")
+    file_path = os.path.join(model_results_dir, filename + ".txt")
+    f = open(file_path, "w")
+    f.write("reward\tsteps\tprogress\ttrace\tterminal_condition\n")
+    return f
+
+def save_as_video():
+    frames_dir = "frames"
+    now = datetime.datetime.now()
+    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+    model_frame_dir = (
+        frames_dir + f"/CNN_frames_{timestamp}/"
+    )
+    if not os.path.exists(model_frame_dir):
+        os.makedirs(model_frame_dir)
+    return model_frame_dir
+
+def calculate_progress(env, initial_frame):
+    total_frames = len(env.ego_agent.trace.good_frames['camera_front'][0])
+    track_left = total_frames - initial_frame
+    progress = env.ego_agent.frame_index - initial_frame
+    progress_percentage = np.round(progress/track_left, 4)
+    return progress_percentage
+
 # Initialize the simulator
 trace_config = dict(
     road_width=4,
@@ -164,7 +200,7 @@ sensors_config = [
         type='camera',
         # camera params
         name='camera_front',
-        size=(200, 320),
+        size=(200, 320), # (200, 320) for lighter cnn, (355, 413) for 80x200
         # rendering params
         depth_mode=DepthModes.FIXED_PLANE,
         use_lighting=False,
@@ -172,7 +208,7 @@ sensors_config = [
 ]
 task_config = dict(n_agents=2,
                     mesh_dir="carpack01",
-                    init_dist_range=[15., 30.],
+                    init_dist_range=[50., 60.],
                     init_lat_noise_range=[-3., 3.],
                     reward_fn=my_reward_fn)
 display_config = dict(road_buffer_size=1000, )
@@ -200,12 +236,12 @@ env.reset();
 display.reset()  # reset should be called after env reset
 
 ## Training parameters and initialization ##
-driving_model = CNN().to(device)
-learning_rate = 0.00005
+driving_model = ResNet34().to(device) # CNN().to(device)
+learning_rate = 0.000005
 episodes = 500
 max_curvature, max_std = 1/8.0, 0.1
-clip = 5
-optimizer = optim.Adam(driving_model.parameters(), lr=learning_rate, weight_decay=1e-5)
+clip = 100
+optimizer = optim.Adam(driving_model.parameters(), lr=learning_rate)
 # instantiate Memory buffer
 memory = Memory()
 
@@ -213,15 +249,21 @@ memory = Memory()
 max_batch_size = 300
 best_reward = float("-inf")  # keep track of the maximum reward acheived during training
 
+# file to log progress
+f = write_file("collision4")
+# frame_dir = save_as_video()
+
 for i_episode in range(episodes):
     print(f"Episode: {i_episode}")
-    env.world.set_seed(47) 
+    # env.world.set_seed(47)
     observation = env.reset();
     display.reset()
+    trace_index = env.ego_agent.trace_index
     observation = grab_and_preprocess_obs(observation, env)
-    steering_history = [0.0]
+    steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
     driving_model.eval() # set to eval for inference loop
     steps = 0
+    initial_frame = env.ego_agent.frame_index
 
     while True:
         curvature_dist = run_driving_model(driving_model, observation, max_curvature, max_std)
@@ -232,7 +274,7 @@ for i_episode in range(episodes):
 
         steering = env.ego_agent.ego_dynamics.steering
         steering_history.append(steering)
-        jitter_reward = calculate_jitter_reward(steering_history)
+        jitter_reward = calculate_jitter_reward(steering_history)*2
         observation = grab_and_preprocess_obs(observations, env)
         done = terminal_conditions['done']
         reward = 0.0 if done else reward + jitter_reward
@@ -244,10 +286,14 @@ for i_episode in range(episodes):
         if done:
             driving_model.train()
             total_reward = sum(memory.rewards)
+            progress = calculate_progress(env, initial_frame)
+            terminal_condition = ""
             for key, value in terminal_conditions.items():
                 if value:
+                    terminal_condition = key
                     print(f"{key}: {value}")
             print(f"total reward: {total_reward}")
+            print(f"Progress: {progress*100:.2f}%")
             print(f"steps: {steps}\n")
 
             batch_size = min(len(memory), max_batch_size)
@@ -271,6 +317,17 @@ for i_episode in range(episodes):
                 clip=clip
             )
 
+            # Check gradients norms
+            total_norm = 0
+            for n, p in driving_model.named_parameters():
+                param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
+                total_norm += param_norm.item() ** 2 # accumulate the squared norm
+            total_norm = total_norm ** 0.5 # take the square root to get the total norm
+            print(f"Total gradient norm: {total_norm}")
+
+            # Write reward and loss to results txt file
+            f.write(f"{total_reward}\t{steps}\t{progress}\t{trace_index}\t{terminal_condition}\n")
+            f.flush()
             # reset the memory
             memory.clear()
             break
