@@ -7,12 +7,15 @@ from matplotlib import cm
 from shapely.geometry import box as Box
 from shapely import affinity
 from typing import List
+
 import torch
 import torch.distributions as dist
 import torch.nn as nn
 import torch.optim as optim
+from torchvision import transforms
+
 from light_cnn import CNN
-from renset34 import ResNet34, ResNet18
+from resnet34 import ResNet34, ResNet18
 import datetime
 
 import vista
@@ -90,6 +93,9 @@ def vista_step(car, curvature=None, speed=None):
 def preprocess(full_obs, env):
     # Extract ROI
     i1, j1, i2, j2 = env.ego_agent.sensors[0].camera_param.get_roi()
+    # crop out hood of car
+    i1 += 10
+    i2 -=10
     obs = full_obs[i1:i2, j1:j2]
     return obs
 
@@ -115,7 +121,7 @@ def run_driving_model(driving_model, image, max_curvature, max_std):
 
 ### Training step (forward and backpropagation) ###
 def train_step(driving_model, optimizer, observations, actions, discounted_rewards, clip):
-    max_curvature, max_std = 1/10.0, 0.01
+    max_curvature, max_std = 1/8.0, 0.01
     optimizer.zero_grad()
     # Forward propagate through the agent network
     prediction = run_driving_model(driving_model, observations, max_curvature, max_std)
@@ -203,7 +209,7 @@ sensors_config = [
         type='camera',
         # camera params
         name='camera_front',
-        size=(200, 320), # (200, 320) for lighter cnn, (355, 413) for 80x200
+        size=(355, 413), # (200, 320) for lighter cnn, (355, 413) for 80x200
         # rendering params
         depth_mode=DepthModes.FIXED_PLANE,
         use_lighting=False,
@@ -240,7 +246,7 @@ display.reset()  # reset should be called after env reset
 
 ## Training parameters and initialization ##
 driving_model = CNN().to(device) #ResNet18().to(device)
-learning_rate = 0.00005
+learning_rate = 0.0005
 episodes = 500
 max_curvature, max_std = 1/8.0, 0.1
 clip = 100
@@ -293,7 +299,7 @@ for i_episode in range(episodes):
         if done:
             driving_model.train()
             total_reward = sum(memory.rewards)
-            # print(memory.rewards)
+            print(memory.rewards)
             progress = calculate_progress(env, initial_frame)
             terminal_condition = ""
             for key, value in terminal_conditions.items():
