@@ -12,7 +12,7 @@ import torch.distributions as dist
 import torch.nn as nn
 import torch.optim as optim
 from light_cnn import CNN
-from renset34 import ResNet34
+from renset34 import ResNet34, ResNet18
 import datetime
 
 import vista
@@ -67,6 +67,7 @@ def my_reward_fn(task, agent_id, **kwargs):
     poly = agent2poly(agent).buffer(5)
     other_polys = list(map(agent2poly, other_agents))
     overlap = (compute_overlap(poly, other_polys) / poly.area) * 10
+    # print(f"Overlap penalty: {overlap[0]}")
 
     reward = lane_reward - overlap[0]
     return (reward, kwargs), {}
@@ -107,12 +108,14 @@ def run_driving_model(driving_model, image, max_curvature, max_std):
     mu, logsigma = driving_model(image)
     mu = max_curvature * torch.tanh(mu)  # conversion
     sigma = max_std * torch.sigmoid(logsigma) + 0.005  # conversion
+    # print(f"mu: {mu}")
+    # print(f"sigma: {sigma}")
     pred_dist = dist.Normal(mu, sigma)
     return pred_dist
 
 ### Training step (forward and backpropagation) ###
 def train_step(driving_model, optimizer, observations, actions, discounted_rewards, clip):
-    max_curvature, max_std = 1/8.0, 0.01
+    max_curvature, max_std = 1/10.0, 0.01
     optimizer.zero_grad()
     # Forward propagate through the agent network
     prediction = run_driving_model(driving_model, observations, max_curvature, max_std)
@@ -236,8 +239,8 @@ env.reset();
 display.reset()  # reset should be called after env reset
 
 ## Training parameters and initialization ##
-driving_model = ResNet34().to(device) # CNN().to(device)
-learning_rate = 0.000005
+driving_model = CNN().to(device) #ResNet18().to(device)
+learning_rate = 0.00005
 episodes = 500
 max_curvature, max_std = 1/8.0, 0.1
 clip = 100
@@ -250,12 +253,11 @@ max_batch_size = 300
 best_reward = float("-inf")  # keep track of the maximum reward acheived during training
 
 # file to log progress
-f = write_file("collision4")
+f = write_file("collision5")
 # frame_dir = save_as_video()
 
 for i_episode in range(episodes):
     print(f"Episode: {i_episode}")
-    # env.world.set_seed(47)
     observation = env.reset();
     display.reset()
     trace_index = env.ego_agent.trace_index
@@ -264,6 +266,8 @@ for i_episode in range(episodes):
     driving_model.eval() # set to eval for inference loop
     steps = 0
     initial_frame = env.ego_agent.frame_index
+    # add initial ob, curv, reward
+    memory.add_to_memory(observation, torch.tensor(0.0), 1.0)
 
     while True:
         curvature_dist = run_driving_model(driving_model, observation, max_curvature, max_std)
@@ -274,10 +278,13 @@ for i_episode in range(episodes):
 
         steering = env.ego_agent.ego_dynamics.steering
         steering_history.append(steering)
-        jitter_reward = calculate_jitter_reward(steering_history)*2
+        jitter_reward = calculate_jitter_reward(steering_history)
+        # print(f"jitter reward: {jitter_reward}")
         observation = grab_and_preprocess_obs(observations, env)
         done = terminal_conditions['done']
         reward = 0.0 if done else reward + jitter_reward
+        if reward < 0.0:
+            reward = 0.0
         curvature = actions[env.ego_agent.id][0]
 
         memory.add_to_memory(observation, torch.tensor(curvature,dtype=torch.float32), reward)
@@ -286,6 +293,7 @@ for i_episode in range(episodes):
         if done:
             driving_model.train()
             total_reward = sum(memory.rewards)
+            # print(memory.rewards)
             progress = calculate_progress(env, initial_frame)
             terminal_condition = ""
             for key, value in terminal_conditions.items():
