@@ -50,6 +50,8 @@ pip3 install torch torchvision
 
 5. Install the following python dependencies
 
+*Might need to add '--no-cache-dir' for each pip install*
+
 Refer to the original VISTA's [yaml](https://github.com/vista-simulator/vista/blob/main/environment.yaml) for specific versions.
 
 - opencv-python (pip install opencv-python-headless)

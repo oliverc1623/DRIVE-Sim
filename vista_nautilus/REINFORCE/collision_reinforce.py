@@ -92,6 +92,9 @@ def vista_step(car, curvature=None, speed=None):
 def preprocess(full_obs, env):
     # Extract ROI
     i1, j1, i2, j2 = env.ego_agent.sensors[0].camera_param.get_roi()
+    # cropping hood out of ROI
+    i1 += 10
+    i2 -=10
     obs = full_obs[i1:i2, j1:j2]
     return obs
 
@@ -115,7 +118,7 @@ def run_driving_model(driving_model, image, max_curvature, max_std):
 
 ### Training step (forward and backpropagation) ###
 def train_step(driving_model, optimizer, observations, actions, discounted_rewards, clip):
-    max_curvature, max_std = 1/8.0, 0.1
+    max_curvature, max_std = 1/8.0, 0.01
     optimizer.zero_grad()
     # Forward propagate through the agent network
     prediction = run_driving_model(driving_model, observations, max_curvature, max_std)
@@ -239,11 +242,11 @@ env.reset();
 display.reset()  # reset should be called after env reset
 
 ## Training parameters and initialization ##
-driving_model = mycnn.CNN().to(device)
-learning_rate = 0.00005
+driving_model = mycnn.CNN(60, 200).to(device)
+learning_rate = 0.0005
 episodes = 500
-max_curvature, max_std = 1/8.0, 0.1
-clip = 5
+max_curvature, max_std = 1/8.0, 0.01
+clip = 100
 optimizer = optim.Adam(driving_model.parameters(), lr=learning_rate)
 # instantiate Memory buffer
 memory = Memory()
@@ -253,12 +256,11 @@ max_batch_size = 300
 best_reward = float("-inf")  # keep track of the maximum reward acheived during training
 
 # file to log progress
-f = write_file("collision3")
+f = write_file("collision6")
 # frame_dir = save_as_video()
 
 for i_episode in range(episodes):
     print(f"Episode: {i_episode}")
-    # env.world.set_seed(47)
     observation = env.reset();
     display.reset()
     trace_index = env.ego_agent.trace_index
@@ -267,6 +269,7 @@ for i_episode in range(episodes):
     driving_model.eval() # set to eval for inference loop
     steps = 0
     initial_frame = env.ego_agent.frame_index
+    memory.add_to_memory(observation, torch.tensor(0.0), 1.0)
 
     while True:
         curvature_dist = run_driving_model(driving_model, observation, max_curvature, max_std)
@@ -277,10 +280,12 @@ for i_episode in range(episodes):
 
         steering = env.ego_agent.ego_dynamics.steering
         steering_history.append(steering)
-        jitter_reward = calculate_jitter_reward(steering_history)*2
+        jitter_reward = calculate_jitter_reward(steering_history)
         observation = grab_and_preprocess_obs(observations, env)
         done = terminal_conditions['done']
         reward = 0.0 if done else reward + jitter_reward
+        if reward < 0.0:
+            reward = 0.0
         curvature = actions[env.ego_agent.id][0]
 
         memory.add_to_memory(observation, torch.tensor(curvature,dtype=torch.float32), reward)
