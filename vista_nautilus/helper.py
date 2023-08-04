@@ -1,9 +1,28 @@
-import vista
+import os
+os.environ["DISPLAY"] = ":1"
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import numpy as np
-import torch
+import copy
 import cv2
 import matplotlib.pyplot as plt
-from vista.entities.agents.Dynamics import curvature2steering
+from matplotlib import cm
+from shapely.geometry import box as Box
+from shapely import affinity
+from typing import List
+import torch
+import torch.distributions as dist
+import torch.nn as nn
+import torch.optim as optim
+import sys
+sys.path.insert(1, '../vista_nautilus/models/')
+import mycnn
+import datetime
+
+import vista
+from vista.entities.sensors.camera_utils.ViewSynthesis import DepthModes
+from vista.utils import logging, misc
+from vista.tasks import MultiAgentBase
+from vista.utils import transform
 
 ### Agent Memory ###
 class Memory:
@@ -77,7 +96,7 @@ def preprocess(full_obs, env):
     obs = full_obs[i1:i2, j1:j2]
     return obs
 
-def grab_and_preprocess_obs(observation, env):
+def grab_and_preprocess_obs(observation, env, device):
     observation = observation[env.ego_agent.id]['camera_front']
     cropped_obs = preprocess(observation, env)
     normalized_cropped = cropped_obs / 255.0
@@ -108,10 +127,10 @@ def train_step(driving_model, optimizer, observations, actions, discounted_rewar
     nn.utils.clip_grad_norm_(driving_model.parameters(), clip)
     optimizer.step()
 
-def sample_actions(curvature_dist, world):
+def sample_actions(curvature_dist, world, ego_id):
     actions = dict()
     for agent in world.agents:
-        if agent.id != env.ego_agent.id:
+        if agent.id != ego_id:
             actions[agent.id] = np.array([0.0,0.0])
         else:
             curvature = curvature_dist.sample()[0,0].cpu()
