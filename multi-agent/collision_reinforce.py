@@ -259,7 +259,7 @@ max_batch_size = 300
 best_reward = float("-inf")  # keep track of the maximum reward acheived during training
 
 # file to log progress
-f = write_file("collision5")
+f = write_file("collision6")
 # frame_dir = save_as_video()
 
 for i_episode in range(episodes):
@@ -276,6 +276,7 @@ for i_episode in range(episodes):
     memory.add_to_memory(observation, torch.tensor(0.0), 1.0)
 
     while True:
+        print(f"step: {steps}")
         curvature_dist = run_driving_model(driving_model, observation, max_curvature, max_std)
         actions = sample_actions(curvature_dist, env.world)
         observations, rewards, dones, infos = env.step(actions)
