@@ -29,7 +29,7 @@ import cv2
 # TODO: make hyperparameters args
 n_train_processes = 3
 learning_rate = 0.0005
-update_interval = 5 # 100
+update_interval = 10 # 100
 gamma = 0.95
 max_train_steps = 60000
 PRINT_INTERVAL = 5
@@ -90,9 +90,7 @@ def worker(worker_id, master_end, worker_end):
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
-            ego_action = data.item()
-            print(f"ego_action: {ego_action}")
-         
+            ego_action = data.item()         
             actions = dict()
             for agent in env.world.agents:
                 if agent.id != env.ego_agent.id:
@@ -113,7 +111,6 @@ def worker(worker_id, master_end, worker_end):
             if done:
                 ob = env.reset();
                 ob = grab_and_preprocess_obs(ob, env, device)
-                print(f"done ob: {ob}")
                 steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
             worker_end.send((ob, torch.tensor(reward), torch.tensor(done)))
         elif cmd == 'reset':
@@ -161,9 +158,6 @@ class ParallelEnv:
         results = [master_end.recv() for master_end in self.master_ends]
         self.waiting = False
         obs, rews, dones = zip(*results)
-        print(f"obs: {obs}")
-        print(f"rews: {rews}")
-        print(f"dones: {dones}")
         torch_obs = torch.stack(obs)
         torch_rews = torch.stack(rews)
         torch_dones = torch.stack(dones)
@@ -240,7 +234,11 @@ def test(step_idx, model, device):
                         task_config=task_config)
     ###
     score = 0.0
-    num_test = 1#5
+    total_steps = 0
+    num_test = 5
+    trace_index = test_env.ego_agent.trace_index
+    initial_frame = test_env.ego_agent.frame_index
+    total_progress = 0.0
     done = False
     for i in range(num_test):
         print(f"num_test: {i}")
@@ -267,9 +265,13 @@ def test(step_idx, model, device):
             score += reward
             step += 1
         print(f"step: {step}")
+        total_steps += step
         done = False
-    print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}\n")
-    return score/num_test # return avg score
+        progress = calculate_progress(test_env, initial_frame)
+        total_progress += progress
+    print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}, avg progress: {total_progress/num_test}\n")
+    # return avg score, avg steps, avg progress, trace_index
+    return score/num_test, total_steps/num_test, total_progress/num_test, trace_index
 
 def compute_target(v_final, r_lst, mask_lst):
     G = v_final.reshape(-1)
@@ -295,8 +297,10 @@ if __name__ == '__main__':
     model = a2c_cnn.ActorCritic().to(device)
     print(model)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
+    f = write_file("a2c_cnn")
+    
     step_idx = 0
+    episode = 0
     s = envs.reset().to(device)
     best_reward = float("-inf")
     while step_idx < max_train_steps:
@@ -313,7 +317,6 @@ if __name__ == '__main__':
             a1 = dist1.sample()
             a2 = dist2.sample()
             a = torch.tensor([a0, a1, a2])
-            print(a)
             s_prime, r, done = envs.step(a)
             print(r)
             s_lst.append(s)
@@ -346,17 +349,21 @@ if __name__ == '__main__':
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
-
+        
         if step_idx % PRINT_INTERVAL == 0:
-            total_reward = test(step_idx, model, device)
-            if total_reward > best_reward:
-                best_reward = total_reward
+            avg_score, avg_steps, avg_progress, trace_index = test(step_idx, model, device)
+            # Write reward and loss to results txt file
+            f.write(f"{avg_score}\t{avg_steps}\t{avg_progress}\t{trace_index}\n")
+            f.flush()
+            episode += 1
+            if avg_score > best_reward:
+                best_reward = avg_score
                 print("Saving and exporting model...")
                 checkpoint = {
                     'epoch': step_idx,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'best_accuracy': total_reward,
+                    'best_accuracy': avg_score,
                 }
                 torch.save(checkpoint, f"saved_models/a2c_cnn_model_{timestamp}.pth")
         time.sleep(1)
