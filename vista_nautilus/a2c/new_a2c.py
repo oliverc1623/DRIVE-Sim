@@ -1,5 +1,5 @@
 import os
-os.environ["DISPLAY"] = ":1"
+os.environ["DISPLAY"] = ":1.0"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 import torch
@@ -183,8 +183,66 @@ class ParallelEnv:
             worker.join()
             self.closed = True
 
-def test(step_idx, model, device):
+def test(step_idx, test_env, model, device):
     print("Testing...")
+    score = 0.0
+    total_steps = 0
+    num_test = 5
+    total_progress = 0.0
+    done = False
+    for i in range(num_test):
+        print(f"num_test: {i}")
+        step = 0
+        time.sleep(1)
+        ob = test_env.reset();
+        trace_index = test_env.ego_agent.trace_index
+        initial_frame = test_env.ego_agent.frame_index
+        observation = grab_and_preprocess_obs(ob, test_env, device)
+        steering_history = [0.0, test_env.ego_agent.ego_dynamics.steering]
+        while not done:
+            mu, sigma = model.pi(observation.permute(2,0,1).to(device))
+            dist = Normal(mu, sigma)
+            actions = sample_actions(dist, test_env.world, test_env.ego_agent.id)
+            observations, rewards, dones, infos = test_env.step(actions)
+            reward = rewards[test_env.ego_agent.id][0]
+            terminal_conditions = rewards[test_env.ego_agent.id][1]
+            steering = test_env.ego_agent.ego_dynamics.steering
+            steering_history.append(steering)
+            jitter_reward = calculate_jitter_reward(steering_history)
+            observation = grab_and_preprocess_obs(observations, test_env, device)
+            done = terminal_conditions['done']
+            reward = 0.0 if done else reward + jitter_reward
+            if reward < 0.0:
+                reward = 0.0
+            score += reward
+            step += 1
+        print(f"step: {step}")
+        total_steps += step
+        done = False
+        progress = calculate_progress(test_env, initial_frame)
+        total_progress += progress
+    print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}, avg progress: {total_progress/num_test}\n")
+    # return avg score, avg steps, avg progress, trace_index
+    return score/num_test, total_steps/num_test, total_progress/num_test, trace_index
+
+def compute_target(v_final, r_lst, mask_lst):
+    G = v_final.reshape(-1)
+    td_target = list()
+
+    for r, mask in zip(r_lst[::-1], mask_lst[::-1]):
+        G = r.numpy() + gamma * G * mask.numpy()
+        td_target.append(G)
+
+    return torch.tensor(np.array(td_target[::-1])).float()
+
+if __name__ == '__main__':
+    # Set the start method to 'spawn'
+    mp.set_start_method('spawn')
+    
+    device = ("cuda:0" if torch.cuda.is_available() else "cpu")
+    print('device:{}'.format(device))
+    envs = ParallelEnv(n_train_processes)
+    
     ### VISTA World for testing
     trace_config = dict(
         road_width=4,
@@ -233,63 +291,6 @@ def test(step_idx, model, device):
                         (task_config['n_agents'] - 1),
                         task_config=task_config)
     ###
-    score = 0.0
-    total_steps = 0
-    num_test = 5
-    trace_index = test_env.ego_agent.trace_index
-    initial_frame = test_env.ego_agent.frame_index
-    total_progress = 0.0
-    done = False
-    for i in range(num_test):
-        print(f"num_test: {i}")
-        step = 0
-        time.sleep(1)
-        ob = test_env.reset();
-        observation = grab_and_preprocess_obs(ob, test_env, device)
-        steering_history = [0.0, test_env.ego_agent.ego_dynamics.steering]
-        while not done:
-            mu, sigma = model.pi(observation.permute(2,0,1).to(device))
-            dist = Normal(mu, sigma)
-            actions = sample_actions(dist, test_env.world, test_env.ego_agent.id)
-            observations, rewards, dones, infos = test_env.step(actions)
-            reward = rewards[test_env.ego_agent.id][0]
-            terminal_conditions = rewards[test_env.ego_agent.id][1]
-            steering = test_env.ego_agent.ego_dynamics.steering
-            steering_history.append(steering)
-            jitter_reward = calculate_jitter_reward(steering_history)
-            observation = grab_and_preprocess_obs(observations, test_env, device)
-            done = terminal_conditions['done']
-            reward = 0.0 if done else reward + jitter_reward
-            if reward < 0.0:
-                reward = 0.0
-            score += reward
-            step += 1
-        print(f"step: {step}")
-        total_steps += step
-        done = False
-        progress = calculate_progress(test_env, initial_frame)
-        total_progress += progress
-    print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}, avg progress: {total_progress/num_test}\n")
-    # return avg score, avg steps, avg progress, trace_index
-    return score/num_test, total_steps/num_test, total_progress/num_test, trace_index
-
-def compute_target(v_final, r_lst, mask_lst):
-    G = v_final.reshape(-1)
-    td_target = list()
-
-    for r, mask in zip(r_lst[::-1], mask_lst[::-1]):
-        G = r.numpy() + gamma * G * mask.numpy()
-        td_target.append(G)
-
-    return torch.tensor(np.array(td_target[::-1])).float()
-
-if __name__ == '__main__':
-    # Set the start method to 'spawn'
-    mp.set_start_method('spawn')
-    
-    device = ("cuda:0" if torch.cuda.is_available() else "cpu")
-    print('device:{}'.format(device))
-    envs = ParallelEnv(n_train_processes)
     
     now = datetime.datetime.now()
     timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
@@ -351,7 +352,7 @@ if __name__ == '__main__':
         optimizer.step()
         
         if step_idx % PRINT_INTERVAL == 0:
-            avg_score, avg_steps, avg_progress, trace_index = test(step_idx, model, device)
+            avg_score, avg_steps, avg_progress, trace_index = test(step_idx, test_env, model, device)
             # Write reward and loss to results txt file
             f.write(f"{avg_score}\t{avg_steps}\t{avg_progress}\t{trace_index}\n")
             f.flush()
