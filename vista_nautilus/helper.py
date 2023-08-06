@@ -165,7 +165,7 @@ def write_file(filename):
     print("Writing log to: " + filename + ".txt")
     file_path = os.path.join(model_results_dir, filename + ".txt")
     f = open(file_path, "w")
-    f.write("reward\tsteps\tprogress\ttrace\tterminal_condition\n")
+    f.write("reward\tsteps\tprogress\ttrace\n")
     return f
 
 def save_as_video():
