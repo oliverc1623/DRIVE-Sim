@@ -21,6 +21,7 @@ import a2c_cnn
 
 import numpy as np
 import datetime
+import time
 import matplotlib.pyplot as plt
 import cv2
 
@@ -83,12 +84,14 @@ def worker(worker_id, master_end, worker_end):
                             sensors_configs=[sensors_config] + [[]] *
                             (task_config['n_agents'] - 1),
                             task_config=task_config)
+
     steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
     
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
             ego_action = data.item()
+            print(f"ego_action: {ego_action}")
          
             actions = dict()
             for agent in env.world.agents:
@@ -109,6 +112,8 @@ def worker(worker_id, master_end, worker_end):
                 reward = 0.0
             if done:
                 ob = env.reset();
+                ob = grab_and_preprocess_obs(ob, env, device)
+                print(f"done ob: {ob}")
                 steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
             worker_end.send((ob, torch.tensor(reward), torch.tensor(done)))
         elif cmd == 'reset':
@@ -156,7 +161,13 @@ class ParallelEnv:
         results = [master_end.recv() for master_end in self.master_ends]
         self.waiting = False
         obs, rews, dones = zip(*results)
-        return torch.stack(obs), torch.stack(rews), torch.stack(dones)
+        print(f"obs: {obs}")
+        print(f"rews: {rews}")
+        print(f"dones: {dones}")
+        torch_obs = torch.stack(obs)
+        torch_rews = torch.stack(rews)
+        torch_dones = torch.stack(dones)
+        return torch_obs, torch_rews, torch_dones
 
     def reset(self):
         for master_end in self.master_ends:
@@ -178,66 +189,8 @@ class ParallelEnv:
             worker.join()
             self.closed = True
 
-def test(step_idx, model, env, device):
+def test(step_idx, model, device):
     print("Testing...")
-    ob = env.reset();
-    score = 0.0
-    num_test = 5
-    save_flag = False
-    for _ in range(num_test):
-        step = 0
-        ob = env.reset();
-        observation = grab_and_preprocess_obs(ob, env, device)
-        done = False
-        steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
-        while not done:
-            mu, sigma = model.pi(observation.permute(2,0,1).to(device))
-            dist = Normal(mu, sigma)
-            actions = sample_actions(dist, env.world, env.ego_agent.id)
-            observations, rewards, dones, infos = env.step(actions)
-            reward = rewards[env.ego_agent.id][0]
-            terminal_conditions = rewards[env.ego_agent.id][1]
-
-            steering = env.ego_agent.ego_dynamics.steering
-            steering_history.append(steering)
-            jitter_reward = calculate_jitter_reward(steering_history)
-            observation = grab_and_preprocess_obs(observations, env, device)
-            done = terminal_conditions['done']
-            reward = 0.0 if done else reward + jitter_reward
-            if reward < 0.0:
-                reward = 0.0
-            curvature = actions[env.ego_agent.id][0]
-            score += reward
-            step += 1
-        done = False
-    print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}\n")
-    return score/num_test # return avg score
-
-def compute_target(v_final, r_lst, mask_lst):
-    G = v_final.reshape(-1)
-    td_target = list()
-
-    for r, mask in zip(r_lst[::-1], mask_lst[::-1]):
-        G = r.numpy() + gamma * G * mask.numpy()
-        td_target.append(G)
-
-    return torch.tensor(np.array(td_target[::-1])).float()
-
-if __name__ == '__main__':
-    # Set the start method to 'spawn'
-    mp.set_start_method('spawn')
-    
-    device = ("cuda:0" if torch.cuda.is_available() else "cpu")
-    print('device:{}'.format(device))
-    envs = ParallelEnv(n_train_processes)
-    
-    now = datetime.datetime.now()
-    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
-
-    model = a2c_cnn.ActorCritic().to(device)
-    print(model)
-    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-
     ### VISTA World for testing
     trace_config = dict(
         road_width=4,
@@ -279,18 +232,75 @@ if __name__ == '__main__':
         "20210726-184956_lexus_devens_center_reverse", 
     ]
     trace_path = [os.path.join(trace_root, p) for p in trace_path]
-    env = MultiAgentBase(trace_paths=trace_path,
+    test_env = MultiAgentBase(trace_paths=trace_path,
                         trace_config=trace_config,
                         car_configs=[car_config] * task_config['n_agents'],
                         sensors_configs=[sensors_config] + [[]] *
                         (task_config['n_agents'] - 1),
                         task_config=task_config)
     ###
+    score = 0.0
+    num_test = 1#5
+    done = False
+    for i in range(num_test):
+        print(f"num_test: {i}")
+        step = 0
+        time.sleep(1)
+        ob = test_env.reset();
+        observation = grab_and_preprocess_obs(ob, test_env, device)
+        steering_history = [0.0, test_env.ego_agent.ego_dynamics.steering]
+        while not done:
+            mu, sigma = model.pi(observation.permute(2,0,1).to(device))
+            dist = Normal(mu, sigma)
+            actions = sample_actions(dist, test_env.world, test_env.ego_agent.id)
+            observations, rewards, dones, infos = test_env.step(actions)
+            reward = rewards[test_env.ego_agent.id][0]
+            terminal_conditions = rewards[test_env.ego_agent.id][1]
+            steering = test_env.ego_agent.ego_dynamics.steering
+            steering_history.append(steering)
+            jitter_reward = calculate_jitter_reward(steering_history)
+            observation = grab_and_preprocess_obs(observations, test_env, device)
+            done = terminal_conditions['done']
+            reward = 0.0 if done else reward + jitter_reward
+            if reward < 0.0:
+                reward = 0.0
+            score += reward
+            step += 1
+        print(f"step: {step}")
+        done = False
+    print(f"Step # :{step_idx}, avg score : {score/num_test:.1f}\n")
+    return score/num_test # return avg score
+
+def compute_target(v_final, r_lst, mask_lst):
+    G = v_final.reshape(-1)
+    td_target = list()
+
+    for r, mask in zip(r_lst[::-1], mask_lst[::-1]):
+        G = r.numpy() + gamma * G * mask.numpy()
+        td_target.append(G)
+
+    return torch.tensor(np.array(td_target[::-1])).float()
+
+if __name__ == '__main__':
+    # Set the start method to 'spawn'
+    mp.set_start_method('spawn')
+    
+    device = ("cuda:0" if torch.cuda.is_available() else "cpu")
+    print('device:{}'.format(device))
+    envs = ParallelEnv(n_train_processes)
+    
+    now = datetime.datetime.now()
+    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+
+    model = a2c_cnn.ActorCritic().to(device)
+    print(model)
+    optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
     step_idx = 0
     s = envs.reset().to(device)
     best_reward = float("-inf")
     while step_idx < max_train_steps:
+        print(f"step indx: {step_idx}")
         s_lst, a_lst, r_lst, mask_lst, s_primes = list(), list(), list(), list(), list()
         for _ in range(update_interval):
             mu0, sigma0 = model.pi(s[0].permute(2,0,1).to(device))
@@ -303,6 +313,7 @@ if __name__ == '__main__':
             a1 = dist1.sample()
             a2 = dist2.sample()
             a = torch.tensor([a0, a1, a2])
+            print(a)
             s_prime, r, done = envs.step(a)
             print(r)
             s_lst.append(s)
@@ -337,7 +348,7 @@ if __name__ == '__main__':
         optimizer.step()
 
         if step_idx % PRINT_INTERVAL == 0:
-            total_reward = test(step_idx, model, env, device)
+            total_reward = test(step_idx, model, device)
             if total_reward > best_reward:
                 best_reward = total_reward
                 print("Saving and exporting model...")
@@ -348,5 +359,4 @@ if __name__ == '__main__':
                     'best_accuracy': total_reward,
                 }
                 torch.save(checkpoint, f"saved_models/a2c_cnn_model_{timestamp}.pth")
-
-    envs.close()
+        time.sleep(1)
