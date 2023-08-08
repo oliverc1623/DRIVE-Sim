@@ -26,7 +26,7 @@ device = torch.device(device)
 print(f"Using {device} device")
 
 #Hyperparameters
-learning_rate   = 0.0005
+learning_rate   = 0.00005
 gamma           = 0.95
 lmbda           = 0.9
 tau             = 0.95
@@ -107,12 +107,9 @@ class PPO(nn.Module):
         while num_steps < mini_batch_size:
             ob = env.reset();
             s = grab_and_preprocess_obs(ob, env, device)
-            
             trace_index = env.ego_agent.trace_index
-            steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
             steps = 0
             initial_frame = env.ego_agent.frame_index
-
             reward_episode = 0
             for t in range(10000):
                 mu, sigma = self.pi(s.permute(2,0,1))
@@ -121,22 +118,14 @@ class PPO(nn.Module):
                 a = torch.tensor([[actions[env.ego_agent.id][0]]]).to(device)
                 log_prob = curvature_dist.log_prob(a)
                 observations, rewards, dones, infos = env.step(actions)
-                reward = rewards[env.ego_agent.id][0]
                 terminal_conditions = rewards[env.ego_agent.id][1]
-
-                steering = env.ego_agent.ego_dynamics.steering
-                steering_history.append(steering)
-                jitter_reward = calculate_jitter_reward(steering_history)
                 s_prime = grab_and_preprocess_obs(observations, env, device)
                 done = terminal_conditions['done']
-                reward = 0.0 if done else reward + jitter_reward
-                if reward < 0.0:
-                    reward = 0.0
-        
+                reward = 0.0 if done else rewards[env.ego_agent.id][0]
                 reward_episode += reward
-                mask = 1 if done else 0
+                mask = 0 if done else 1
                 memory.push(s, a, mask, s_prime, reward, log_prob.item())
-                if mask:
+                if done:
                     break
                 s = s_prime
             # log stats
