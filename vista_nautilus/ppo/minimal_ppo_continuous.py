@@ -237,6 +237,7 @@ def main(render = False):
     print_interval = 1
     score = 0.0
     global_step = 0
+    best_score = float("-inf")
     for n_epi in range(10000):
         print(f"n_episode: {n_epi}")
         observation = env.reset();
@@ -244,6 +245,7 @@ def main(render = False):
         done = False
         total_progress = 0.0
         steps = 0
+        score = 0.0
         trace_index = env.ego_agent.trace_index
         initial_frame = env.ego_agent.frame_index
         while not done: 
@@ -261,7 +263,6 @@ def main(render = False):
                 model.put_data((observation, a, reward, observation_prime, \
                                 log_prob, done))
                 observation = observation_prime
-                
                 score += reward
                 steps += 1
                 if done:
@@ -269,9 +270,18 @@ def main(render = False):
             model.train_net()
         if n_epi%print_interval==0 and n_epi!=0:
             progress = calculate_progress(env, initial_frame)
-            print(f"# of episode :{n_epi}, avg score : {score/print_interval:.1f}, steps : {steps}, progress : {progress*100}%")
+            print(f"# of episode :{n_epi}, score : {score/print_interval:.1f}, steps : {steps}, progress : {progress*100}%")
             f.write(f"{score}\t{steps}\t{progress}\t{trace_index}\n")
             f.flush()
-            score = 0.0
+            if score > best_score:
+                best_reward = score
+                print("Saving and exporting model...")
+                checkpoint = {
+                    'epoch': n_epi,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': model.optimizer.state_dict(),
+                    'best_accuracy': score,
+                }
+                torch.save(checkpoint, f"saved_models/ppo_cnn_model_{timestamp}.pth")
 
 main()
