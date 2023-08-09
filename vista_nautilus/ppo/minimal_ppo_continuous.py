@@ -22,7 +22,7 @@ from helper import *
 #Hyperparameters
 entropy_coef = 1e-2
 critic_coef = 1
-learning_rate = 0.0005
+learning_rate = 0.00005
 gamma         = 0.9
 lmbda         = 0.9
 eps_clip      = 0.2
@@ -214,6 +214,7 @@ def main(render = False):
     display = vista.Display(env.world, display_config=display_config)
 
     # start env
+    env.world.set_seed(47)
     env.reset();
     display.reset()
     model = PPO(device).to(device)
@@ -228,7 +229,7 @@ def main(render = False):
     if not os.path.exists(model_results_dir):
         os.makedirs(model_results_dir)
     # Define the file path
-    filename = "minimal_ppo_trial1"
+    filename = "minimal_ppo_trial2_47"
     print("Writing log to: " + filename + ".txt")
     file_path = os.path.join(model_results_dir, filename + ".txt")
     f = open(file_path, "w")
@@ -238,8 +239,10 @@ def main(render = False):
     score = 0.0
     global_step = 0
     best_score = float("-inf")
+ 
     for n_epi in range(10000):
         print(f"n_episode: {n_epi}")
+        env.world.set_seed(47)
         observation = env.reset();
         observation = grab_and_preprocess_obs(observation, env, device)
         done = False
@@ -273,8 +276,9 @@ def main(render = False):
             print(f"# of episode :{n_epi}, score : {score/print_interval:.1f}, steps : {steps}, progress : {progress*100}%")
             f.write(f"{score}\t{steps}\t{progress}\t{trace_index}\n")
             f.flush()
+
             if score > best_score:
-                best_reward = score
+                best_score = score
                 print("Saving and exporting model...")
                 checkpoint = {
                     'epoch': n_epi,
