@@ -22,7 +22,7 @@ from helper import *
 #Hyperparameters
 entropy_coef = 1e-2
 critic_coef = 1
-learning_rate = 0.0003
+learning_rate = 0.00005
 gamma         = 0.9
 lmbda         = 0.9
 eps_clip      = 0.2
@@ -214,21 +214,44 @@ def main(render = False):
     display = vista.Display(env.world, display_config=display_config)
 
     # start env
+    env.world.set_seed(47)
     env.reset();
     display.reset()
     model = PPO(device).to(device)
 
     import cv2
+    # open and write to file to track progress
+    now = datetime.datetime.now()
+    timestamp = now.strftime("%Y-%m-%d_%H-%M-%S")
+    results_dir = "results"
+    model_results_dir = results_dir + "/CNN/" # TODO: make this into variable
+
+    if not os.path.exists(model_results_dir):
+        os.makedirs(model_results_dir)
+    # Define the file path
+    filename = "minimal_ppo_trial2_47"
+    print("Writing log to: " + filename + ".txt")
+    file_path = os.path.join(model_results_dir, filename + ".txt")
+    f = open(file_path, "w")
+    f.write("reward\tsteps\tprogress\ttrace\n")
 
     print_interval = 1
     score = 0.0
     global_step = 0
+    best_score = float("-inf")
+ 
     for n_epi in range(10000):
         print(f"n_episode: {n_epi}")
+        env.world.set_seed(47)
         observation = env.reset();
         observation = grab_and_preprocess_obs(observation, env, device)
         done = False
-        while not done:
+        total_progress = 0.0
+        steps = 0
+        score = 0.0
+        trace_index = env.ego_agent.trace_index
+        initial_frame = env.ego_agent.frame_index
+        while not done: 
             for t in range(T_horizon):
                 global_step += 1 
                 mu,sigma = model.pi(observation.permute(2,0,1))
@@ -240,19 +263,29 @@ def main(render = False):
                 observation_prime = grab_and_preprocess_obs(observation_prime, env, device)
                 done = rewards[env.ego_agent.id][1]['done']
                 reward = 0.0 if done else rewards[env.ego_agent.id][0]
-                print(f"reward: {reward}")
-                print(f"done: {done}")
-    
                 model.put_data((observation, a, reward, observation_prime, \
                                 log_prob, done))
                 observation = observation_prime
-                
                 score += reward
+                steps += 1
                 if done:
                     break
             model.train_net()
         if n_epi%print_interval==0 and n_epi!=0:
-            print("# of episode :{}, avg score : {:.1f}".format(n_epi, score/print_interval))
-            score = 0.0
+            progress = calculate_progress(env, initial_frame)
+            print(f"# of episode :{n_epi}, score : {score/print_interval:.1f}, steps : {steps}, progress : {progress*100}%")
+            f.write(f"{score}\t{steps}\t{progress}\t{trace_index}\n")
+            f.flush()
+
+            if score > best_score:
+                best_score = score
+                print("Saving and exporting model...")
+                checkpoint = {
+                    'epoch': n_epi,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': model.optimizer.state_dict(),
+                    'best_accuracy': score,
+                }
+                torch.save(checkpoint, f"saved_models/ppo_cnn_model_{timestamp}.pth")
 
 main()

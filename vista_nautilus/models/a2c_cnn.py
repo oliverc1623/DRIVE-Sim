@@ -25,7 +25,6 @@ class ActorCritic(nn.Module):
         self.fc2 = nn.Linear(100, 100)
         self.relu7 = nn.ReLU() 
         self.fc3 = nn.Linear(100, 2)
-
         self.fc_v = nn.Linear(100, 1)
 
     def pi(self, x):
