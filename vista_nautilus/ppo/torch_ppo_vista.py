@@ -156,6 +156,8 @@ class PPO(nn.Module):
 
     def calc_advantages(self, s, a, r, s_prime, done_mask):
         with torch.no_grad():
+            print(f"s shape: {s.shape}")
+            print(f"s prime shape: {s_prime.shape}")
             td_target = r + gamma * self.v(s_prime) * done_mask
             delta = td_target - self.v(s)
         delta = delta.cpu().numpy()
@@ -178,7 +180,11 @@ class PPO(nn.Module):
         s_primes = torch.stack(batch.next_state)
         # ** Might need to implement another way to get fixed log probs**
         """get advantage estimation from the trajectories"""
-        advantages, td_target = self.calc_advantages(states, actions, rewards, s_primes, masks)
+        advantages, td_target = self.calc_advantages(states.detach(), 
+                                                     actions.detach(),
+                                                     rewards.detach(), 
+                                                     s_primes.detach(), 
+                                                     masks.detach())
         advantages = advantages.to(device)
         td_target = td_target.to(device)
 

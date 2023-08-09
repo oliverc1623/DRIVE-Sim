@@ -20,12 +20,11 @@ class ActorCritic(nn.Module):
         self.conv5 = nn.Conv2d(64, 2, kernel_size=3, stride=1, padding=1)
         self.norm5 = nn.GroupNorm(1, 2)
         self.relu5 = nn.ReLU()
-        self.fc1 = nn.Linear(2 * 80 * 200, 100)
+        self.fc1 = nn.Linear(2 * 70 * 310, 100)
         self.relu6 = nn.ReLU()
         self.fc2 = nn.Linear(100, 100)
         self.relu7 = nn.ReLU() 
         self.fc3 = nn.Linear(100, 2)
-
         self.fc_v = nn.Linear(100, 1)
 
     def pi(self, x):
