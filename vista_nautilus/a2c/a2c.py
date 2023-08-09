@@ -28,11 +28,11 @@ import cv2
 # Hyperparameters
 # TODO: make hyperparameters args
 n_train_processes = 3
-learning_rate = 0.0005
+learning_rate = 0.00005
 update_interval = 10 # 100
 gamma = 0.95
 max_train_steps = 60000
-PRINT_INTERVAL = 5
+PRINT_INTERVAL = update_interval
 
 def worker(worker_id, master_end, worker_end):
     master_end.close()  # Forbid worker to use the master end for messaging
@@ -83,10 +83,7 @@ def worker(worker_id, master_end, worker_end):
                             car_configs=[car_config] * task_config['n_agents'],
                             sensors_configs=[sensors_config] + [[]] *
                             (task_config['n_agents'] - 1),
-                            task_config=task_config)
-
-    steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
-    
+                            task_config=task_config)    
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
@@ -100,12 +97,9 @@ def worker(worker_id, master_end, worker_end):
             observations, rewards, dones, infos = env.step(actions)
             
             terminal_conditions = rewards[env.ego_agent.id][1]
-            steering = env.ego_agent.ego_dynamics.steering
-            steering_history.append(steering)
-            jitter_reward = calculate_jitter_reward(steering_history)
             ob = grab_and_preprocess_obs(observations, env, device)
             done = int(terminal_conditions['done'])
-            reward = 0.0 if done else rewards[env.ego_agent.id][0] + jitter_reward
+            reward = 0.0 if done else rewards[env.ego_agent.id][0]
             if reward < 0.0:
                 reward = 0.0
             if done:
@@ -198,20 +192,15 @@ def test(step_idx, test_env, model, device):
         trace_index = test_env.ego_agent.trace_index
         initial_frame = test_env.ego_agent.frame_index
         observation = grab_and_preprocess_obs(ob, test_env, device)
-        steering_history = [0.0, test_env.ego_agent.ego_dynamics.steering]
         while not done:
             mu, sigma = model.pi(observation.permute(2,0,1).to(device))
             dist = Normal(mu, sigma)
             actions = sample_actions(dist, test_env.world, test_env.ego_agent.id)
             observations, rewards, dones, infos = test_env.step(actions)
-            reward = rewards[test_env.ego_agent.id][0]
             terminal_conditions = rewards[test_env.ego_agent.id][1]
-            steering = test_env.ego_agent.ego_dynamics.steering
-            steering_history.append(steering)
-            jitter_reward = calculate_jitter_reward(steering_history)
             observation = grab_and_preprocess_obs(observations, test_env, device)
             done = terminal_conditions['done']
-            reward = 0.0 if done else reward + jitter_reward
+            reward = 0.0 if done else rewards[test_env.ego_agent.id][0]
             if reward < 0.0:
                 reward = 0.0
             score += reward
