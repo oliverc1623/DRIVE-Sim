@@ -25,24 +25,24 @@ from vista.tasks import MultiAgentBase
 from vista.utils import transform
 
 # ### Agent Memory ###
-# class Memory:
-#     def __init__(self):
-#         self.clear()
+class Memory:
+    def __init__(self):
+        self.clear()
 
-#     # Resets/restarts the memory buffer
-#     def clear(self):
-#         self.observations = []
-#         self.actions = []
-#         self.rewards = []
+    # Resets/restarts the memory buffer
+    def clear(self):
+        self.observations = []
+        self.actions = []
+        self.rewards = []
 
-#     # Add observations, actions, rewards to memory
-#     def add_to_memory(self, new_observation, new_action, new_reward):
-#         self.observations.append(new_observation)
-#         self.actions.append(new_action)
-#         self.rewards.append(new_reward)
+    # Add observations, actions, rewards to memory
+    def add_to_memory(self, new_observation, new_action, new_reward):
+        self.observations.append(new_observation)
+        self.actions.append(new_action)
+        self.rewards.append(new_reward)
 
-#     def __len__(self):
-#         return len(self.actions)
+    def __len__(self):
+        return len(self.actions)
 
 def compute_overlap(poly: Box, polys: List[Box]) -> List[float]:
     n_polys = len(polys)
@@ -70,6 +70,8 @@ def my_reward_fn(task, agent_id, **kwargs):
     overlap = (compute_overlap(poly, other_polys) / poly.area) * 10
 
     reward = lane_reward - overlap[0]
+    if reward < 0.0:
+        reward = 0.0
     return (reward, kwargs), {}
 
 def calculate_jitter_reward(steering_history):
