@@ -101,7 +101,8 @@ def preprocess(full_obs, env):
 def grab_and_preprocess_obs(observation, env, device):
     observation = observation[env.ego_agent.id]['camera_front']
     cropped_obs = preprocess(observation, env)
-    normalized_cropped = cropped_obs / 255.0
+    resized_obs = cv2.resize(cropped_obs, (144, 144))
+    normalized_cropped = resized_obs / 255.0
     return torch.from_numpy(normalized_cropped).to(torch.float32).to(device)
 
 ## The self-driving learning algorithm ##
