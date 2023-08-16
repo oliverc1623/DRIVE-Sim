@@ -24,7 +24,7 @@ from vista.utils import logging, misc
 from vista.tasks import MultiAgentBase
 from vista.utils import transform
 
-### Agent Memory ###
+# ### Agent Memory ###
 class Memory:
     def __init__(self):
         self.clear()
@@ -70,6 +70,8 @@ def my_reward_fn(task, agent_id, **kwargs):
     overlap = (compute_overlap(poly, other_polys) / poly.area) * 10
 
     reward = lane_reward - overlap[0]
+    if reward < 0.0:
+        reward = 0.0
     return (reward, kwargs), {}
 
 def calculate_jitter_reward(steering_history):
@@ -99,7 +101,8 @@ def preprocess(full_obs, env):
 def grab_and_preprocess_obs(observation, env, device):
     observation = observation[env.ego_agent.id]['camera_front']
     cropped_obs = preprocess(observation, env)
-    normalized_cropped = cropped_obs / 255.0
+    resized_obs = cv2.resize(cropped_obs, (144, 144))
+    normalized_cropped = resized_obs / 255.0
     return torch.from_numpy(normalized_cropped).to(torch.float32).to(device)
 
 ## The self-driving learning algorithm ##

@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class CNN(nn.Module):
-    def __init__(self):
+    def __init__(self, input_width, input_height):
         super(CNN, self).__init__()
         self.conv1 = nn.Conv2d(3, 24, kernel_size=3, stride=1, padding=1)
         self.norm1 = nn.GroupNorm(8, 24)
@@ -21,7 +21,7 @@ class CNN(nn.Module):
         self.norm5 = nn.GroupNorm(1, 2)
         self.relu5 = nn.ReLU()
 
-        self.fc1 = nn.Linear(2 * 80 * 200, 100)
+        self.fc1 = nn.Linear(2 * input_width * input_height, 100)
         self.relu6 = nn.ReLU()
         self.fc2 = nn.Linear(100, 100)
         self.relu7 = nn.ReLU() 

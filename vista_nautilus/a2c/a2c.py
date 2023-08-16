@@ -83,7 +83,8 @@ def worker(worker_id, master_end, worker_end):
                             car_configs=[car_config] * task_config['n_agents'],
                             sensors_configs=[sensors_config] + [[]] *
                             (task_config['n_agents'] - 1),
-                            task_config=task_config)    
+                            task_config=task_config)   
+    env.world.set_seed(47)
     while True:
         cmd, data = worker_end.recv()
         if cmd == 'step':
@@ -103,11 +104,13 @@ def worker(worker_id, master_end, worker_end):
             if reward < 0.0:
                 reward = 0.0
             if done:
+                env.world.set_seed(47)
                 ob = env.reset();
                 ob = grab_and_preprocess_obs(ob, env, device)
                 steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
             worker_end.send((ob, torch.tensor(reward), torch.tensor(done)))
         elif cmd == 'reset':
+            env.world.set_seed(47)
             ob = env.reset();
             ob = grab_and_preprocess_obs(ob, env, device)
             worker_end.send(ob)
@@ -188,6 +191,7 @@ def test(step_idx, test_env, model, device):
         print(f"num_test: {i}")
         step = 0
         time.sleep(1)
+        test_env.world.set_seed(47)
         ob = test_env.reset();
         trace_index = test_env.ego_agent.trace_index
         initial_frame = test_env.ego_agent.frame_index
