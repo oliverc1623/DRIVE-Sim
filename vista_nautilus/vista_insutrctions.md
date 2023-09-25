@@ -24,9 +24,15 @@ sudo apt-get install -y ffmpeg
 sudo apt-get install -y xvfb python-opengl x11-utils &> /dev/null
 ```
 
+Try this command if the first xvfb command didn't work
+```
+sudo apt install xvfb
+```
+
 3.1. Start xvfb process
 
 If you want to run Xvfb in the background, you can use the & symbol at the end of the command:
+Be sure to run with sudo
 ```
 Xvfb :1 -screen 0 1280x1024x24 &
 ```
@@ -104,3 +110,11 @@ sudo apt-get install -y xvfb python-opengl x11-utils &> /dev/null
 ```
 
 3.1. Start xvfb process
+
+
+## How to setup a kernel for Notebooks
+```
+source activate [myenv]
+pip install ipykernel
+python -m ipykernel install --user --name myenv --display-name "Python (myenv)"
+```
