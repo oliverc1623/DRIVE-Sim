@@ -3,8 +3,10 @@ os.environ["DISPLAY"] = ":1"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 from VistaEnv import VistaEnv
-from stable_baselines3.common.env_checker import check_env
 import copy
+
+from stable_baselines3 import A2C
+from stable_baselines3.common.env_checker import check_env
 
 # Initialize the simulator
 trace_config = dict(
@@ -43,4 +45,7 @@ env = VistaEnv(trace_paths = trace_paths,
                display_config = display_config,
                sensors_configs = [camera_config])
 
-print(check_env(env))
+# check_env(env, warn=True)
+
+model = A2C("CnnPolicy", env, verbose=2)
+model.learn(total_timesteps=100, progress_bar=True)
