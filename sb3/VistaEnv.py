@@ -64,6 +64,7 @@ class VistaEnv(gym.Env):
         'reward_fn': default_reward_fn,
             'terminal_condition': default_terminal_condition,
     }
+    metadata = {"render_modes": ["rgb_array"]}
 
     def __init__(self,
                  trace_paths: List[str],
@@ -108,7 +109,9 @@ class VistaEnv(gym.Env):
                                             shape=(3, 200, 320),
                                             dtype=np.uint8)
 
-    def reset(self, seed=1):
+    def reset(self, seed=1, options=None):
+        super().reset(seed=seed, options=options)
+        
         self._world.set_seed(seed)
         self._world.reset()
         self._display.reset()
@@ -194,6 +197,18 @@ class VistaEnv(gym.Env):
     def _append_agent_id(self, data):
         agent = self._world.agents[0]
         return {agent.id: data}
+
+    def render(self):
+        # agent is represented as a cross, rest as a dot
+        if self.render_mode == "rgb_array":
+            agent = self._world.agents[0]
+            observations = self._append_agent_id(agent.observations)
+            observation = observations['camera_front']
+            observation = np.transpose(observation, (2,0,1))
+            return observation
+
+    def close(self):
+        pass
 
     @property
     def config(self) -> Dict:
