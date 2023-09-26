@@ -20,7 +20,7 @@ def default_terminal_condition(task, agent_id, **kwargs):
 
     def _check_exceed_max_rot():
         maximal_rotation = np.pi / 10.
-        return np.abs(agent.relative_state.theta) > maximal_rotation
+        return np.abs(agent.relative_state.yaw) > maximal_rotation
 
     out_of_lane = _check_out_of_lane()
     exceed_max_rot = _check_exceed_max_rot()
@@ -62,7 +62,7 @@ class VistaEnv(gym.Env):
     """
     DEFAULT_CONFIG = {
         'reward_fn': default_reward_fn,
-        'terminal_condition': default_terminal_condition,
+            'terminal_condition': default_terminal_condition,
     }
 
     def __init__(self,
@@ -105,7 +105,7 @@ class VistaEnv(gym.Env):
                                        dtype=np.float32)
 
         self.observation_space = spaces.Box(low=0, high=255,
-                                            shape=(3, 80, 200),
+                                            shape=(3, 200, 320),
                                             dtype=np.uint8)
 
     def reset(self, seed=1):
@@ -123,11 +123,12 @@ class VistaEnv(gym.Env):
         info['exceed_rot'] = False
         info['distance'] = self._distance
 
-        print(f"observations: {type(observations[agent.id]['camera_front'])}")
+        observation = observations[agent.id]['camera_front']
+        observation = np.transpose(observation, (2,0,1))
 
-        return observations[agent.id]['camera_front'], info
+        return observation, info
 
-    def step(self, action, dt=1 / 30.):
+    def step(self, action, dt = 1/30.0):
         """ Step the environment. This involves updating agent's state based on
         the given actions and determining reward and termination.
 
@@ -143,14 +144,15 @@ class VistaEnv(gym.Env):
             where ``dict_a`` is the observation, ``dict_b`` is the reward,
             ``dict_c`` is whether the episode terminates, ``dict_d`` is additional
             informations for every agents; keys of every dictionary are agent IDs.
-
         """
         # Step agent and get observation
         agent = self._world.agents[0]
-        action = np.array([action[agent.id][0], agent.human_speed])
+        action = np.array([action[0], agent.human_speed])
         agent.step_dynamics(action, dt=dt)
         agent.step_sensors()
         observations = agent.observations
+        observation = observations['camera_front']
+        observation = np.transpose(observation, (2,0,1))
 
         # Define terminal condition
         done, info_from_terminal_condition = self.config['terminal_condition'](
@@ -163,18 +165,20 @@ class VistaEnv(gym.Env):
         # Get info
         info = misc.fetch_agent_info(agent)
         info['out_of_lane'] = info_from_terminal_condition['out_of_lane']
-        info['exceed_rot'] = info_from_terminal_condition['exceed_rot']
+        info['exceed_max_rot'] = info_from_terminal_condition['exceed_max_rot']
 
         current_xy = agent.ego_dynamics.numpy()[:2]
         self._distance += np.linalg.norm(current_xy - self._prev_xy)
         self._prev_xy = current_xy
         info['distance'] = self._distance
 
+        truncated = False
         # Pack output
-        observations, reward, done, info = map(
-            self._append_agent_id, [observations, reward, done, info])
+        # observation, reward, done, info = map(
+        #     self._append_agent_id, [observation, reward, done, info])
+        # print(observation)
 
-        return observations, reward, done, info
+        return observation, reward, done, truncated, info
 
     def set_seed(self, seed) -> None:
         """ Set random seed.

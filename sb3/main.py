@@ -23,7 +23,7 @@ camera_config = {'type': 'camera',
                  'name': 'camera_front',
                  'rig_path': './RIG.xml',
                  'optical_flow_root': '../data_prep/Super-SloMo/slowmo',
-                 'size': (355, 413)}
+                 'size': (200, 320)}
 ego_car_config = copy.deepcopy(car_config)
 ego_car_config['lookahead_road'] = True
 trace_root = "../vista_nautilus/vista_traces"
