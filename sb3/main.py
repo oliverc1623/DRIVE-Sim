@@ -41,10 +41,13 @@ trace_paths = [os.path.join(trace_root, p) for p in trace_path]
 
 display_config = dict(road_buffer_size=1000, )
 
+preprocess_config = {"crop_roi": True}
+
 env = VistaEnv(trace_paths = trace_paths, 
                trace_config = trace_config,
                car_config = car_config,
                display_config = display_config,
+               preprocess_config = preprocess_config,
                sensors_configs = [camera_config])
 
 # Create log dir
@@ -56,7 +59,8 @@ env = Monitor(env, log_dir)
 # check_env(env, warn=True)
 
 model = A2C("CnnPolicy", env, verbose=2)
-model.learn(total_timesteps=100, progress_bar=True)
+timesteps = 100
+model.learn(total_timesteps=timesteps, progress_bar=True)
 
 # Save the agent
 model.save("vista_a2c")
