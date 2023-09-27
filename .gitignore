@@ -3,7 +3,6 @@ notebooks/b1.png
 notebooks/nautilus_analysis.ipynb
 notebooks/output.csv
 notebooks/ppo_trial3.csv
-vista/
 vista_nautilus/REINFORCE/Untitled.ipynb
 vista_nautilus/REINFORCE/lstm_collision_reinforce.py
 vista_nautilus/__MACOSX/
@@ -31,3 +30,9 @@ vista_nautilus/training_results/CNN/reinforce_200x320.txt
 vista_nautilus/training_results/CNN/reinforce_355x413.txt
 vista_nautilus/training_results/CNN/reinforce_600x960.txt
 vista_nautilus/training_results/LSTM/
+vista/carpack01
+vista/data_prep
+vista/vista_traces
+vista/a2c/tmp
+vista/a2c/*.ipynb
+vista/a2c/*.zip

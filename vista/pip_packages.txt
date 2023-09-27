@@ -1,0 +1,8 @@
+pip install stable-baselines3[extra]
+pip install swig
+pip install gymnasium[box2d]
+pip install vista
+pip install shapely
+pip install ffio
+pip install pyrender
+pip install descartes
