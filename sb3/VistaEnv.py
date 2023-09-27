@@ -119,6 +119,12 @@ class VistaEnv(gym.Env):
                                             shape=(3, self._width, self._height),
                                             dtype=np.uint8)
 
+    def _preprocess(self, image):
+        # Extract ROI
+        i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
+        obs = image[i1:i2, j1:j2]
+        return obs
+
     def reset(self, seed=1, options=None):
         super().reset(seed=seed, options=options)
         
@@ -137,6 +143,7 @@ class VistaEnv(gym.Env):
         info['distance'] = self._distance
 
         observation = observations[agent.id]['camera_front']
+        observation = self._preprocess(observation)
         observation = np.transpose(observation, (2,0,1))
 
         return observation, info
@@ -165,6 +172,7 @@ class VistaEnv(gym.Env):
         agent.step_sensors()
         observations = agent.observations
         observation = observations['camera_front']
+        observation = self._preprocess(observation)
         observation = np.transpose(observation, (2,0,1))
 
         # Define terminal condition
@@ -214,6 +222,7 @@ class VistaEnv(gym.Env):
             agent = self._world.agents[0]
             observations = self._append_agent_id(agent.observations)
             observation = observations['camera_front']
+            observation = self._preprocess(observation)
             observation = np.transpose(observation, (2,0,1))
             return observation
 
