@@ -14,6 +14,3 @@ pip install gymnasium[box2d]
 ```
 
 Run `pip install gymnasium[mujoco]` if you're using pybullet. 
-
-Test
-Another test

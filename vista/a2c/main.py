@@ -8,7 +8,6 @@ import copy
 from stable_baselines3 import A2C
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.evaluation import evaluate_policy
 
 # Initialize the simulator
 trace_config = dict(
@@ -30,7 +29,7 @@ camera_config = {'type': 'camera',
                  'size': (200, 320)}
 ego_car_config = copy.deepcopy(car_config)
 ego_car_config['lookahead_road'] = True
-trace_root = "../vista_nautilus/vista_traces"
+trace_root = "../vista_traces"
 trace_path = [
     "20210726-154641_lexus_devens_center", 
     "20210726-155941_lexus_devens_center_reverse", 
@@ -41,26 +40,26 @@ trace_paths = [os.path.join(trace_root, p) for p in trace_path]
 
 display_config = dict(road_buffer_size=1000, )
 
+preprocess_config = {"crop_roi": True}
+
 env = VistaEnv(trace_paths = trace_paths, 
                trace_config = trace_config,
                car_config = car_config,
                display_config = display_config,
+               preprocess_config = preprocess_config,
                sensors_configs = [camera_config])
 
-model = A2C.load("vista_a2c", env=env)
+# Create log dir
+log_dir = "tmp/"
+os.makedirs(log_dir, exist_ok=True)
 
-mean_reward, std_reward = evaluate_policy(model, model.get_env(), n_eval_episodes=1)
+env = Monitor(env, log_dir)
 
-print(f"mean reward: {mean_reward}")
-print(f"std reward: {std_reward}")
+# check_env(env, warn=True)
 
-vec_env = model.get_env()
-obs = vec_env.reset()
-for i in range(1000):
-    action, _state = model.predict(obs, deterministic=True)
-    obs, reward, done, info = vec_env.step(action)
-    # vec_env.render("human")
-    # VecEnv resets automatically
-    if done:
-        print(f"done: {done}")
-        obs = vec_env.reset()
+model = A2C("CnnPolicy", env, verbose=2)
+timesteps = 100
+model.learn(total_timesteps=timesteps, progress_bar=True)
+
+# Save the agent
+model.save("vista_a2c")
