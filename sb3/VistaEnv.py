@@ -71,6 +71,7 @@ class VistaEnv(gym.Env):
                  trace_config: Dict,
                  car_config: Dict, 
                  display_config: Dict,
+                 preprocess_config: Dict,
                  sensors_configs: Optional[List[Dict]] = [],
                  task_config: Optional[Dict] = dict(),
                  logging_level: Optional[str] = 'WARNING'):
@@ -83,11 +84,15 @@ class VistaEnv(gym.Env):
         self._world: World = World(trace_paths, trace_config)
         
         self._display = Display(self._world, display_config=display_config)
+
+        self._width, self._height = 0, 0
         
         agent = self._world.spawn_agent(car_config)
         for sensor_config in sensors_configs:
             sensor_type = sensor_config.pop('type')
             if sensor_type == 'camera':
+                self._width = sensor_config['size'][0]
+                self._height = sensor_config['size'][1]
                 agent.spawn_camera(sensor_config)
             elif sensor_type == 'event_camera':
                 agent.spawn_event_camera(sensor_config)
@@ -104,10 +109,21 @@ class VistaEnv(gym.Env):
                                        high=1.0, 
                                        shape=(1,), 
                                        dtype=np.float32)
-
+        
+        self._preprocess_config = preprocess_config
+        if self._preprocess_config['crop_roi']:
+            i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
+            self._width, self._height = i2-i1, j2-j1
+            
         self.observation_space = spaces.Box(low=0, high=255,
-                                            shape=(3, 200, 320),
+                                            shape=(3, self._width, self._height),
                                             dtype=np.uint8)
+
+    def _preprocess(self, image):
+        # Extract ROI
+        i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
+        obs = image[i1:i2, j1:j2]
+        return obs
 
     def reset(self, seed=1, options=None):
         super().reset(seed=seed, options=options)
@@ -127,6 +143,7 @@ class VistaEnv(gym.Env):
         info['distance'] = self._distance
 
         observation = observations[agent.id]['camera_front']
+        observation = self._preprocess(observation)
         observation = np.transpose(observation, (2,0,1))
 
         return observation, info
@@ -155,6 +172,7 @@ class VistaEnv(gym.Env):
         agent.step_sensors()
         observations = agent.observations
         observation = observations['camera_front']
+        observation = self._preprocess(observation)
         observation = np.transpose(observation, (2,0,1))
 
         # Define terminal condition
@@ -204,6 +222,7 @@ class VistaEnv(gym.Env):
             agent = self._world.agents[0]
             observations = self._append_agent_id(agent.observations)
             observation = observations['camera_front']
+            observation = self._preprocess(observation)
             observation = np.transpose(observation, (2,0,1))
             return observation
 
