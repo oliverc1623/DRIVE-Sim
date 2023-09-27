@@ -36,7 +36,7 @@ def default_terminal_condition(task, agent_id, **kwargs):
 
 def default_reward_fn(task, agent_id, **kwargs):
     """ An example definition of reward function. """
-    reward = -1 if kwargs['done'] else 0  # simply encourage survival
+    reward = 0 if kwargs['done'] else 1
 
     return reward, {}
 
