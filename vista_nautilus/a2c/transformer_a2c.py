@@ -28,7 +28,7 @@ import cv2
 # Hyperparameters
 # TODO: make hyperparameters args
 n_train_processes = 3
-learning_rate = 0.00005
+learning_rate = 0.000005
 update_interval = 10 # 100
 gamma = 0.95
 max_train_steps = 5000 #60000
@@ -348,7 +348,17 @@ if __name__ == '__main__':
         print("Calculating gradients...")
         optimizer.zero_grad()
         loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 2)
         optimizer.step()
+        
+        # Check gradients norms
+        total_norm = 0
+        for name, p in model.named_parameters():
+            if p.requires_grad and not p.grad is None:
+                param_norm = p.grad.data.norm(2) # calculate the L2 norm of gradients
+                total_norm += param_norm.item() ** 2 # accumulate the squared norm
+        total_norm = total_norm ** 0.5 # take the square root to get the total norm
+        print(f"Total gradient norm: {total_norm}\n")
         
         if step_idx % PRINT_INTERVAL == 0:
             avg_score, avg_steps, avg_progress, trace_index = test(step_idx, test_env, model, device)

@@ -24,7 +24,7 @@ from helper import *
 #Hyperparameters
 entropy_coef = 1e-2
 critic_coef = 1
-learning_rate = 0.00005
+learning_rate = 0.000005
 gamma         = 0.9
 lmbda         = 0.9
 eps_clip      = 0.2
@@ -240,7 +240,7 @@ class SimpleViT(nn.Module):
 
 def main(render = False):
     if torch.cuda.is_available():
-        device= 'cuda:1'
+        device= 'cuda:0'
     else:
         device = 'cpu'
     print('device:{}'.format(device))
@@ -318,7 +318,7 @@ def main(render = False):
     if not os.path.exists(model_results_dir):
         os.makedirs(model_results_dir)
     # Define the file path
-    filename = "ppo_vit"
+    filename = "ppo_vit_trial4"
     print("Writing log to: " + filename + ".txt")
     file_path = os.path.join(model_results_dir, filename + ".txt")
     f = open(file_path, "w")

@@ -28,7 +28,7 @@ import sys
 sys.path.insert(1, '../vista_nautilus/')
 from helper import * 
 
-device = ("cuda:0" if torch.cuda.is_available() else "cpu")
+device = ("cuda:1" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
 
 # Initialize the simulator
@@ -86,7 +86,7 @@ env.reset();
 
 ## Training parameters and initialization ##
 driving_model = mycnn.CNN(70, 310).to(device)
-learning_rate = 0.0005
+learning_rate = 0.00005
 episodes = 500
 max_curvature, max_std = 1/8.0, 0.01
 clip = 100
@@ -99,16 +99,16 @@ max_batch_size = 300
 best_reward = float("-inf")  # keep track of the maximum reward acheived during training
 
 # file to log progress
-f = write_file("collision6")
+f = write_file("collision10")
 # frame_dir = save_as_video()
 
 for i_episode in range(episodes):
     print(f"Episode: {i_episode}")
+    env.world.set_seed(47)
     observation = env.reset();
     # display.reset()
     trace_index = env.ego_agent.trace_index
     observation = grab_and_preprocess_obs(observation, env, device)
-    steering_history = [0.0, env.ego_agent.ego_dynamics.steering]
     steps = 0
     initial_frame = env.ego_agent.frame_index
     memory.add_to_memory(observation, torch.tensor(0.0), 1.0)
@@ -119,15 +119,9 @@ for i_episode in range(episodes):
         observations, rewards, dones, infos = env.step(actions)
         reward = rewards[env.ego_agent.id][0]
         terminal_conditions = rewards[env.ego_agent.id][1]
-
-        steering = env.ego_agent.ego_dynamics.steering
-        steering_history.append(steering)
-        jitter_reward = calculate_jitter_reward(steering_history)
         observation = grab_and_preprocess_obs(observations, env, device)
         done = terminal_conditions['done']
-        reward = 0.0 if done else reward + jitter_reward
-        if reward < 0.0:
-            reward = 0.0
+        reward = 0.0 if done else reward 
         curvature = actions[env.ego_agent.id][0]
         memory.add_to_memory(observation, torch.tensor(curvature,dtype=torch.float32), reward)
         steps +=1

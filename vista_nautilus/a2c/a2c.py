@@ -31,7 +31,7 @@ n_train_processes = 3
 learning_rate = 0.00005
 update_interval = 10 # 100
 gamma = 0.95
-max_train_steps = 60000
+max_train_steps = 5000 #60000
 PRINT_INTERVAL = update_interval
 
 def worker(worker_id, master_end, worker_end):
@@ -101,8 +101,6 @@ def worker(worker_id, master_end, worker_end):
             ob = grab_and_preprocess_obs(observations, env, device)
             done = int(terminal_conditions['done'])
             reward = 0.0 if done else rewards[env.ego_agent.id][0]
-            if reward < 0.0:
-                reward = 0.0
             if done:
                 env.world.set_seed(47)
                 ob = env.reset();
@@ -184,7 +182,7 @@ def test(step_idx, test_env, model, device):
     print("Testing...")
     score = 0.0
     total_steps = 0
-    num_test = 5
+    num_test = 1
     total_progress = 0.0
     done = False
     for i in range(num_test):
@@ -205,8 +203,6 @@ def test(step_idx, test_env, model, device):
             observation = grab_and_preprocess_obs(observations, test_env, device)
             done = terminal_conditions['done']
             reward = 0.0 if done else rewards[test_env.ego_agent.id][0]
-            if reward < 0.0:
-                reward = 0.0
             score += reward
             step += 1
         print(f"step: {step}")
@@ -304,15 +300,12 @@ if __name__ == '__main__':
             mu0, sigma0 = model.pi(s[0].permute(2,0,1).to(device))
             mu1, sigma1 = model.pi(s[1].permute(2,0,1).to(device))
             mu2, sigma2 = model.pi(s[2].permute(2,0,1).to(device))
-            # mu3, sigma3 = model.pi(s[3].permute(2,0,1).to(device))
             dist0 = Normal(mu0, sigma0)
             dist1 = Normal(mu1, sigma1)
             dist2 = Normal(mu2, sigma2)
-            # dist3 = Normal(mu3, sigma3)
             a0 = dist0.sample()
             a1 = dist1.sample()
             a2 = dist2.sample()
-            # a3 = dist3.sample()
             a = torch.tensor([a0, a1, a2])
             s_prime, r, done = envs.step(a)
             print(r)
