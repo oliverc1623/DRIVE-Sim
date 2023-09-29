@@ -121,7 +121,7 @@ class VistaEnv(gym.Env):
         self.observation_space = spaces.Box(low=0, high=255,
                                             shape=(3, self._width, self._height),
                                             dtype=np.uint8)
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+        self.action_space = spaces.Box(low=-1/5.0, high=1/5.0, shape=(1,), dtype=np.float32)
 
     def _preprocess(self, image):
         # Extract ROI
