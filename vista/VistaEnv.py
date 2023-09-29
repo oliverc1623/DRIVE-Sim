@@ -41,6 +41,18 @@ def default_reward_fn(task, agent_id, **kwargs):
     return reward, {}
 
 
+def lane_reward_fn(task, agent_id, **kwargs):
+    agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
+    
+    road_width = agent.trace.road_width
+    z_lat = road_width / 2
+    q_lat = np.abs(agent.relative_state.x)
+    lane_reward = max(0, round(1 - (q_lat/z_lat)**2, 4))
+    
+    reward = 0 if kwargs['done'] else lane_reward
+    return reward, {}
+
+
 class VistaEnv(gym.Env):
     """ This class defines a simple lane following task in Vista. It basically
     handles vehicle state update of the ego car, rendering of specified sensors,
@@ -61,8 +73,8 @@ class VistaEnv(gym.Env):
 
     """
     DEFAULT_CONFIG = {
-        'reward_fn': default_reward_fn,
-            'terminal_condition': default_terminal_condition,
+        'reward_fn': lane_reward_fn,
+        'terminal_condition': default_terminal_condition,
     }
     metadata = {"render_modes": ["rgb_array"]}
 
@@ -78,13 +90,9 @@ class VistaEnv(gym.Env):
         super().__init__()
         
         logging.setLevel(getattr(logging, logging_level))
-
         self._config = misc.merge_dict(task_config, self.DEFAULT_CONFIG)
-
         self._world: World = World(trace_paths, trace_config)
-        
         self._display = Display(self._world, display_config=display_config)
-
         self._width, self._height = 0, 0
         
         agent = self._world.spawn_agent(car_config)
@@ -104,11 +112,6 @@ class VistaEnv(gym.Env):
 
         self._distance = 0
         self._prev_xy = np.zeros((2, ))
-
-        self.action_space = spaces.Box(low=-1.0, 
-                                       high=1.0, 
-                                       shape=(1,), 
-                                       dtype=np.float32)
         
         self._preprocess_config = preprocess_config
         if self._preprocess_config['crop_roi']:
@@ -118,6 +121,7 @@ class VistaEnv(gym.Env):
         self.observation_space = spaces.Box(low=0, high=255,
                                             shape=(3, self._width, self._height),
                                             dtype=np.uint8)
+        self.action_space = spaces.Box(low=-1/5.0, high=1/5.0, shape=(1,), dtype=np.float32)
 
     def _preprocess(self, image):
         # Extract ROI
@@ -128,7 +132,8 @@ class VistaEnv(gym.Env):
     def reset(self, seed=1, options=None):
         super().reset(seed=seed, options=options)
         
-        self._world.set_seed(seed)
+        # self._world.set_seed(seed)
+        self.set_seed(seed)
         self._world.reset()
         self._display.reset()
         agent = self._world.agents[0]
@@ -149,24 +154,9 @@ class VistaEnv(gym.Env):
         return observation, info
 
     def step(self, action, dt = 1/30.0):
-        """ Step the environment. This involves updating agent's state based on
-        the given actions and determining reward and termination.
-
-        Args:
-            actions (Dict[str, np.ndarray]):
-                A dictionary with keys as agent IDs and values as actions
-                to be executed to interact with the environment and other
-                agents.
-            dt (float): Elapsed time in second; default set to 1/30.
-
-        Returns:
-            Return a tuple (``dict_a``, ``dict_b``, ``dict_c``, ``dict_d``),
-            where ``dict_a`` is the observation, ``dict_b`` is the reward,
-            ``dict_c`` is whether the episode terminates, ``dict_d`` is additional
-            informations for every agents; keys of every dictionary are agent IDs.
-        """
         # Step agent and get observation
         agent = self._world.agents[0]
+
         action = np.array([action[0], agent.human_speed])
         agent.step_dynamics(action, dt=dt)
         agent.step_sensors()
@@ -179,14 +169,14 @@ class VistaEnv(gym.Env):
         done, info_from_terminal_condition = self.config['terminal_condition'](
             self, agent.id)
 
-        # Define reward
-        reward, _ = self.config['reward_fn'](self, agent.id,
-                                             **info_from_terminal_condition)
-
         # Get info
         info = misc.fetch_agent_info(agent)
         info['out_of_lane'] = info_from_terminal_condition['out_of_lane']
         info['exceed_max_rot'] = info_from_terminal_condition['exceed_max_rot']
+
+        # Define reward
+        reward, _ = self.config['reward_fn'](self, agent.id,
+                                             **info_from_terminal_condition)
 
         current_xy = agent.ego_dynamics.numpy()[:2]
         self._distance += np.linalg.norm(current_xy - self._prev_xy)
@@ -206,7 +196,6 @@ class VistaEnv(gym.Env):
 
         Args:
             seed (int): Random seed.
-
         """
         self._seed = seed
         self._rng = np.random.default_rng(self.seed)
