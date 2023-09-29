@@ -36,7 +36,7 @@ camera_config = {'type': 'camera',
                  'name': 'camera_front',
                  'rig_path': './RIG.xml',
                  'optical_flow_root': '../data_prep/Super-SloMo/slowmo',
-                 'size': (200, 320)}
+                 'size': (400, 640)}
 ego_car_config = copy.deepcopy(car_config)
 ego_car_config['lookahead_road'] = True
 trace_root = "../vista_traces"
@@ -73,8 +73,8 @@ policy_kwargs = dict(
 )
 
 model = A2C("CnnPolicy", env, policy_kwargs=policy_kwargs, verbose=2)
-timesteps = 250
+timesteps = 50_000
 model.learn(total_timesteps=timesteps, progress_bar=True)
 
 # Save the agent
-# model.save("vista_a2c")
+model.save("vista_a2c_mycnn_50000_400x640")
