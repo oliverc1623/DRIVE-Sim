@@ -101,7 +101,8 @@ run = wandb.init(
 if __name__ == "__main__":
     num_cpu = 4  # Number of processes to use
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    vec_env = VecMonitor(vec_env)
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance'))
+
 
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
@@ -113,7 +114,6 @@ if __name__ == "__main__":
         learning_rate = learning_configs['learning_rate'],
         policy_kwargs=policy_kwargs, 
         verbose=1,
-        tensorboard_log=f"runs/{run.id}",
         device=device
     )
     timesteps = learning_configs['total_timesteps']
