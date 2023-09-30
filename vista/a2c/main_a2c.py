@@ -2,23 +2,36 @@ import os
 os.environ["DISPLAY"] = ":1"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
+# local imports
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('VistaEnv.py'))))
 from VistaEnv import VistaEnv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))))
 from CustomCNN import CustomCNN
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('LoggingCallback.py'))))
+from LoggingCallback import LoggingCallback
+
+# wandb
+import wandb
+from wandb.integration.sb3 import WandbCallback
+
+# Standard Torch
 import copy
 import time
+import torch
 
+# SB3
 from stable_baselines3 import A2C
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 
-import torch
 
+device = ("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device(device)
+print(f"Using {device} device")
 
 def make_env(rank: int, seed: int = 0):
     """
@@ -29,6 +42,36 @@ def make_env(rank: int, seed: int = 0):
     :param rank: index of the subprocess
     """
     def _init():
+        # Initialize the simulator
+        trace_config = dict(
+            road_width=4,
+            reset_mode='default',
+            master_sensor='camera_front',
+        )
+        car_config = dict(
+            length=5.,
+            width=2.,
+            wheel_base=2.78,
+            steering_ratio=14.7,
+            lookahead_road=True,
+        )
+        camera_config = {'type': 'camera',
+                         'name': 'camera_front',
+                         'rig_path': './RIG.xml',
+                         'optical_flow_root': '../data_prep/Super-SloMo/slowmo',
+                         'size': (400, 640)}
+        ego_car_config = copy.deepcopy(car_config)
+        ego_car_config['lookahead_road'] = True
+        trace_root = "../vista_traces"
+        trace_path = [
+            "20210726-154641_lexus_devens_center", 
+            "20210726-155941_lexus_devens_center_reverse", 
+            "20210726-184624_lexus_devens_center", 
+            "20210726-184956_lexus_devens_center_reverse", 
+        ]
+        trace_paths = [os.path.join(trace_root, p) for p in trace_path]
+        display_config = dict(road_buffer_size=1000, )
+        preprocess_config = {"crop_roi": True}
         env = VistaEnv(trace_paths = trace_paths, 
                trace_config = trace_config,
                car_config = car_config,
@@ -38,64 +81,43 @@ def make_env(rank: int, seed: int = 0):
         env.reset(seed=seed + rank)
         return env
     set_random_seed(seed)
-    time.sleep(1)
     return _init
 
-device = ("cuda:0" if torch.cuda.is_available() else "cpu")
-device = torch.device(device)
-print(f"Using {device} device")
+learning_configs = {
+    "policy_type": "CustomCnnPolicy",
+    "total_timesteps": 250,
+    "env_id": "VISTA",
+    "learning_rate": 0.0007
+}
+# start a new wandb run to track this script
+run = wandb.init(
+    project="VISTA xDRL",
+    config=learning_configs,
+    sync_tensorboard = True,
+    monitor_gym = True,
+    save_code = True,
+)
 
 if __name__ == "__main__":
-    # Initialize the simulator
-    trace_config = dict(
-        road_width=4,
-        reset_mode='default',
-        master_sensor='camera_front',
-    )
-    car_config = dict(
-        length=5.,
-        width=2.,
-        wheel_base=2.78,
-        steering_ratio=14.7,
-        lookahead_road=True,
-    )
-    camera_config = {'type': 'camera',
-                     'name': 'camera_front',
-                     'rig_path': './RIG.xml',
-                     'optical_flow_root': '../data_prep/Super-SloMo/slowmo',
-                     'size': (400, 640)}
-    ego_car_config = copy.deepcopy(car_config)
-    ego_car_config['lookahead_road'] = True
-    trace_root = "../vista_traces"
-    trace_path = [
-        "20210726-154641_lexus_devens_center", 
-        "20210726-155941_lexus_devens_center_reverse", 
-        "20210726-184624_lexus_devens_center", 
-        "20210726-184956_lexus_devens_center_reverse", 
-    ]
-    trace_paths = [os.path.join(trace_root, p) for p in trace_path]
-    display_config = dict(road_buffer_size=1000, )
-    preprocess_config = {"crop_roi": True}
-    
     num_cpu = 4  # Number of processes to use
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    
-    # Create log dir
-    log_dir = "tmp/"
-    os.makedirs(log_dir, exist_ok=True)
-    
-    vec_env = VecMonitor(vec_env, log_dir)
-    
-    # check_env(env, warn=True)
-    
+    vec_env = VecMonitor(vec_env)
+
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=256),
     )
-    
-    model = A2C("CnnPolicy", vec_env, policy_kwargs=policy_kwargs, verbose=2)
-    timesteps = 250
-    model.learn(total_timesteps=timesteps, progress_bar=True)
-    
-    # Save the agent
-    model.save("vista_a2c_mycnn_50000_400x640_mp")
+    model = A2C(
+        "CnnPolicy", 
+        vec_env,
+        learning_rate = learning_configs['learning_rate'],
+        policy_kwargs=policy_kwargs, 
+        verbose=1,
+        tensorboard_log=f"runs/{run.id}",
+        device=device
+    )
+    timesteps = learning_configs['total_timesteps']
+    model.learn(
+        total_timesteps=timesteps, 
+        progress_bar=True
+    )
