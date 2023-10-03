@@ -1,5 +1,5 @@
 import os
-os.environ["DISPLAY"] = ":1"
+os.environ["DISPLAY"] = ":4"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 # local imports
@@ -17,15 +17,14 @@ import time
 import torch
 
 # SB3
-from stable_baselines3 import A2C
+from stable_baselines3 import SAC
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 
-
-device = ("cuda:0" if torch.cuda.is_available() else "cpu")
+device = ("cuda:3" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
@@ -83,7 +82,7 @@ learning_configs = {
     "policy_type": "CustomCnnPolicy",
     "total_timesteps": 100_000,
     "env_id": "VISTA",
-    "learning_rate": 0.00005
+    "learning_rate":  0.0007
 }
 
 
@@ -100,19 +99,24 @@ if __name__ == "__main__":
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=256),
     )
-    model = A2C(
+
+    torch.cuda.empty_cache()
+    
+    model = SAC(
         "CnnPolicy", 
         vec_env,
         learning_rate = learning_configs['learning_rate'],
+        buffer_size=64,
+        batch_size=64,
         policy_kwargs=policy_kwargs, 
         verbose=1,
-        device=device
+        device=device,
     )
     timesteps = learning_configs['total_timesteps']
     model.learn(
         total_timesteps=timesteps, 
         progress_bar=True
     )
-
+    
     # Save the agent
     model.save("vista_a2c_2048_mycnn")

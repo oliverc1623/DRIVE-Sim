@@ -21,6 +21,10 @@ from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckA
 
 import torch
 
+device = ("cuda:2" if torch.cuda.is_available() else "cpu")
+device = torch.device(device)
+print(f"Using {device} device")
+
 
 def make_env(rank: int, seed: int = 0):
     """
@@ -42,10 +46,6 @@ def make_env(rank: int, seed: int = 0):
     set_random_seed(seed)
     time.sleep(1)
     return _init
-
-device = ("cuda:0" if torch.cuda.is_available() else "cpu")
-device = torch.device(device)
-print(f"Using {device} device")
 
 if __name__ == "__main__":
     # Initialize the simulator
@@ -95,11 +95,21 @@ if __name__ == "__main__":
 
     # The noise objects for DDPG
     n_actions = vec_env.action_space.shape[-1]
-    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
+    action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.001 * np.ones(n_actions))
 
-    model = DDPG("CnnPolicy", vec_env, learning_rate=0.0007, policy_kwargs=policy_kwargs, verbose=2, action_noise=action_noise, train_freq=(1, 'step'), device=device)
-    timesteps = 400
+    model = DDPG("CnnPolicy", 
+                 vec_env, 
+                 learning_rate=0.0007, 
+                 buffer_size=64, 
+                 batch_size=64, 
+                 policy_kwargs=policy_kwargs, 
+                 verbose=2, 
+                 action_noise=action_noise, 
+                 train_freq=(1, 'step'), 
+                 device=device
+    )
+    timesteps = 100_000
     model.learn(total_timesteps=timesteps, progress_bar=True)
 
     # Save the agent
-    # model.save("vista_a2c_mycnn_000_400x640_mp")
+    model.save("vista_ddpg_2048_mycnn")
