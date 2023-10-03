@@ -19,6 +19,10 @@ from stable_baselines3.common.utils import set_random_seed
 
 import torch
 
+device = ("cuda:1" if torch.cuda.is_available() else "cpu")
+device = torch.device(device)
+print(f"Using {device} device")
+
 
 def make_env(rank: int, seed: int = 0):
     """
@@ -40,10 +44,6 @@ def make_env(rank: int, seed: int = 0):
     set_random_seed(seed)
     time.sleep(1)
     return _init
-
-device = ("cuda:1" if torch.cuda.is_available() else "cpu")
-device = torch.device(device)
-print(f"Using {device} device")
 
 if __name__ == "__main__":
     # Initialize the simulator
@@ -91,9 +91,15 @@ if __name__ == "__main__":
         features_extractor_kwargs=dict(features_dim=256),
     )
 
-    model = PPO("CnnPolicy", vec_env, policy_kwargs=policy_kwargs, verbose=2, device=device)
-    timesteps = 2048
+    model = PPO("CnnPolicy", 
+                vec_env, 
+                learning_rate=0.0007,
+                policy_kwargs=policy_kwargs, 
+                verbose=2, 
+                device=device
+    )
+    timesteps = 100_000
     model.learn(total_timesteps=timesteps, progress_bar=True)
 
     # Save the agent
-    # model.save("vista_a2c_mycnn_000_400x640_mp")
+    model.save("vista_ppo_2048_mycnn")
