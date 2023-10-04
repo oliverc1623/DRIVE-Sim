@@ -3,6 +3,7 @@ from gymnasium import spaces
 
 from typing import Optional, List, Dict, Any
 import numpy as np
+import random 
 
 from vista import World
 from vista import Display
@@ -52,6 +53,17 @@ def lane_reward_fn(task, agent_id, **kwargs):
     reward = 0 if kwargs['done'] else lane_reward
     return reward, {}
 
+
+def initial_dynamics_fn(x, y, yaw, steering, speed):
+    x_perturbation = .5
+    yaw_perturbation = .5
+    return [
+        x + random.uniform(-x_perturbation,x_perturbation),
+        y,
+        yaw + random.uniform(-yaw_perturbation,yaw_perturbation),
+        steering,
+        speed,
+    ]
 
 class VistaEnv(gym.Env):
     """ This class defines a simple lane following task in Vista. It basically
@@ -134,7 +146,7 @@ class VistaEnv(gym.Env):
         
         # self._world.set_seed(seed)
         self.set_seed(seed)
-        self._world.reset()
+        self._world.reset({self._world.agents[0].id: initial_dynamics_fn})
         self._display.reset()
         agent = self._world.agents[0]
         observations = self._append_agent_id(agent.observations)
