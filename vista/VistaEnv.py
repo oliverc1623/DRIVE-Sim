@@ -16,7 +16,7 @@ def default_terminal_condition(task, agent_id, **kwargs):
     agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
 
     def _check_out_of_lane():
-        road_half_width = agent.trace.road_width / 2.
+        road_half_width = agent.trace.road_width / 4. # 4 for training, 2 for eval
         return np.abs(agent.relative_state.x) > road_half_width
 
     def _check_exceed_max_rot():
@@ -42,25 +42,36 @@ def default_reward_fn(task, agent_id, **kwargs):
     return reward, {}
 
 
-def lane_reward_fn(task, agent_id, **kwargs):
+def get_rotation_penalty(agent_orientation, target_orientation, max_rotation_penalty):
+    orientation_difference = abs(agent_orientation - target_orientation)
+    rotation_threshold = 0.001  # Adjust this threshold as needed
+    rotation_penalty = max(0, orientation_difference - rotation_threshold)
+    penalty = -rotation_penalty * max_rotation_penalty
+    return penalty
+
+def lane_reward_fn(task, agent_id, prev_yaw, **kwargs):
     agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
     
     road_width = agent.trace.road_width
     z_lat = road_width / 2
     q_lat = np.abs(agent.relative_state.x)
-    lane_reward = max(0, round(1 - (q_lat/z_lat)**2, 4))
+    lane_reward = 1 - (q_lat/z_lat)**2
+
+    rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], np.pi/10.)
+    print(f"rotation penalty: {rotation_penalty}")
+
+    reward = lane_reward + rotation_penalty
     
-    reward = 0 if kwargs['done'] else lane_reward
+    reward = -1 if kwargs['done'] else reward
     return reward, {}
 
-
 def initial_dynamics_fn(x, y, yaw, steering, speed):
-    x_perturbation = .5
-    yaw_perturbation = .5
+    x_perturbation = 2
+    # yaw_perturbation = .5
     return [
         x + random.uniform(-x_perturbation,x_perturbation),
         y,
-        yaw + random.uniform(-yaw_perturbation,yaw_perturbation),
+        yaw, #+ random.uniform(-yaw_perturbation,yaw_perturbation),
         steering,
         speed,
     ]
@@ -124,6 +135,7 @@ class VistaEnv(gym.Env):
 
         self._distance = 0
         self._prev_xy = np.zeros((2, ))
+        self._prev_yaw = 0.0
         
         self._preprocess_config = preprocess_config
         if self._preprocess_config['crop_roi']:
@@ -147,11 +159,13 @@ class VistaEnv(gym.Env):
         # self._world.set_seed(seed)
         self.set_seed(seed)
         self._world.reset({self._world.agents[0].id: initial_dynamics_fn})
+        # self._world.reset()
         self._display.reset()
         agent = self._world.agents[0]
         observations = self._append_agent_id(agent.observations)
         self._distance = 0
         self._prev_xy = np.zeros((2, ))
+        self._prev_yaw = 0.0
 
         # Set info
         info = {}
@@ -187,12 +201,19 @@ class VistaEnv(gym.Env):
         info['exceed_max_rot'] = info_from_terminal_condition['exceed_max_rot']
 
         # Define reward
-        reward, _ = self.config['reward_fn'](self, agent.id,
+        reward, _ = self.config['reward_fn'](self, agent.id, self._prev_yaw,
                                              **info_from_terminal_condition)
 
         current_xy = agent.ego_dynamics.numpy()[:2]
+        # print(f"curr xy: {current_xy}")
+        # print(f"prev xy: {self._prev_xy}")
         self._distance += np.linalg.norm(current_xy - self._prev_xy)
         self._prev_xy = current_xy
+
+        # print(f"prev yaw: {self._prev_yaw}")
+        # print(f"current yaw: {agent.ego_dynamics.numpy()[2]}\n")
+        self._prev_yaw = agent.ego_dynamics.numpy()[2]
+    
         info['distance'] = self._distance
 
         truncated = False
