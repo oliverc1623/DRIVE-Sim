@@ -2,6 +2,8 @@ import os
 os.environ["DISPLAY"] = ":1"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('VistaEnv.py'))))
 from VistaEnv import VistaEnv
 import copy
 
@@ -30,7 +32,7 @@ camera_config = {'type': 'camera',
                  'size': (200, 320)}
 ego_car_config = copy.deepcopy(car_config)
 ego_car_config['lookahead_road'] = True
-trace_root = "../vista_nautilus/vista_traces"
+trace_root = "../vista_traces"
 trace_path = [
     "20210726-154641_lexus_devens_center", 
     "20210726-155941_lexus_devens_center_reverse", 

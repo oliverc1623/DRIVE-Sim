@@ -99,16 +99,17 @@ if __name__ == "__main__":
 
     model = DDPG("CnnPolicy", 
                  vec_env, 
-                 learning_rate=0.0007, 
+                 learning_rate=0.00005, 
                  buffer_size=64, 
                  batch_size=64, 
+                 gradient_steps=2,
                  policy_kwargs=policy_kwargs, 
                  verbose=2, 
                  action_noise=action_noise, 
                  train_freq=(1, 'step'), 
                  device=device
     )
-    timesteps = 100_000
+    timesteps = 10_000
     model.learn(total_timesteps=timesteps, progress_bar=True)
 
     # Save the agent

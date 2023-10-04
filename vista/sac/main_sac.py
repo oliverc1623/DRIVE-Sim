@@ -20,7 +20,7 @@ import torch
 from stable_baselines3 import SAC
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder, VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 
@@ -80,15 +80,17 @@ def make_env(rank: int, seed: int = 0):
 
 learning_configs = {
     "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 100_000,
+    "total_timesteps": 10_000,
     "env_id": "VISTA",
-    "learning_rate":  0.0007
+    "learning_rate": 0.0003
 }
 
 
 if __name__ == "__main__":
     num_cpu = 4  # Number of processes to use
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+    # Frame-stacking with 4 frames
+    vec_env = VecFrameStack(vec_env, n_stack=4)
 
     # Create log dir
     log_dir = "tmp/"
@@ -106,8 +108,9 @@ if __name__ == "__main__":
         "CnnPolicy", 
         vec_env,
         learning_rate = learning_configs['learning_rate'],
-        buffer_size=64,
+        buffer_size=40,
         batch_size=64,
+        gradient_steps=10,
         policy_kwargs=policy_kwargs, 
         verbose=1,
         device=device,
@@ -119,4 +122,4 @@ if __name__ == "__main__":
     )
     
     # Save the agent
-    model.save("vista_a2c_2048_mycnn")
+    model.save("vista_a2c_2048_mycnn_stack")
