@@ -13,7 +13,7 @@ import time
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 
@@ -79,6 +79,8 @@ if __name__ == "__main__":
     
     num_cpu = 4  # Number of processes to use
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+    # Frame-stacking with 4 frames
+    vec_env = VecFrameStack(vec_env, n_stack=4)
     
     # Create log dir
     log_dir = "tmp/"
@@ -93,13 +95,14 @@ if __name__ == "__main__":
 
     model = PPO("CnnPolicy", 
                 vec_env, 
-                learning_rate=0.0007,
+                learning_rate=0.0003,
+                n_steps=5,
                 policy_kwargs=policy_kwargs, 
                 verbose=2, 
                 device=device
     )
-    timesteps = 100_000
+    timesteps = 10_000
     model.learn(total_timesteps=timesteps, progress_bar=True)
 
     # Save the agent
-    model.save("vista_ppo_2048_mycnn")
+    model.save("vista_ppo_2048_mycnn_stacked")
