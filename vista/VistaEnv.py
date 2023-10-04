@@ -63,7 +63,7 @@ def lane_reward_fn(task, agent_id, prev_yaw, **kwargs):
     # print(f"rotation penalty: {rotation_penalty}")
 
     reward = lane_reward + rotation_penalty
-    
+
     reward = -1 if kwargs['done'] else reward
     return reward, {}
 
