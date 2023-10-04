@@ -109,7 +109,7 @@ if __name__ == "__main__":
         vec_env,
         learning_rate = learning_configs['learning_rate'],
         buffer_size=40,
-        batch_size=64,
+        batch_size=4,
         gradient_steps=10,
         policy_kwargs=policy_kwargs, 
         verbose=1,

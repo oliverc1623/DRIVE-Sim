@@ -81,40 +81,42 @@ def make_env(rank: int, seed: int = 0):
 
 learning_configs = {
     "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 10_000,
+    "total_timesteps": 100,
     "env_id": "VISTA",
     "learning_rate": 0.0003
 }
 
-
 if __name__ == "__main__":
-    num_cpu = 4  # Number of processes to use
-    vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    # Frame-stacking with 4 frames
-    vec_env = VecFrameStack(vec_env, n_stack=4)
 
-    # Create log dir
-    log_dir = "tmp/"
-    os.makedirs(log_dir, exist_ok=True)
-    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance'))
+    for i in range(4):
+        torch.cuda.empty_cache()
+        num_cpu = 4  # Number of processes to use
+        vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+        # Frame-stacking with 4 frames
+        vec_env = VecFrameStack(vec_env, n_stack=4)
+    
+        # Create log dir
+        log_dir = f"tmp_perturbation_trial{i}/"
+        os.makedirs(log_dir, exist_ok=True)
+        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance'))
+    
+        policy_kwargs = dict(
+            features_extractor_class=CustomCNN,
+            features_extractor_kwargs=dict(features_dim=256),
+        )
+        model = A2C(
+            "CnnPolicy", 
+            vec_env,
+            learning_rate = learning_configs['learning_rate'],
+            policy_kwargs=policy_kwargs, 
+            verbose=1,
+            device=device
+        )
+        timesteps = learning_configs['total_timesteps']
+        model.learn(
+            total_timesteps=timesteps, 
+            progress_bar=True
+        )
 
-    policy_kwargs = dict(
-        features_extractor_class=CustomCNN,
-        features_extractor_kwargs=dict(features_dim=256),
-    )
-    model = A2C(
-        "CnnPolicy", 
-        vec_env,
-        learning_rate = learning_configs['learning_rate'],
-        policy_kwargs=policy_kwargs, 
-        verbose=1,
-        device=device
-    )
-    timesteps = learning_configs['total_timesteps']
-    model.learn(
-        total_timesteps=timesteps, 
-        progress_bar=True
-    )
-
-    # Save the agent
-    model.save("vista_a2c_2048_mycnn")
+        # Save the agent
+        model.save(f"vista_a2c_2048_mycnn_trial{i}")
