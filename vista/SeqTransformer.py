@@ -23,26 +23,46 @@ class SeqTransformer(BaseFeaturesExtractor):
         super().__init__(observation_space, features_dim)
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
-        n_input_channels = observation_space.shape[0]
-        print(f"obs shape: {observation_space}")
-        print(f"n_input channels: {n_input_channels}")
-       
-        self.cnn = nn.Sequential(
-            nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0),
+        # print(f"ob space: {observation_space}")
+        
+        self.v = nn.Sequential(
+            ViT(
+                image_size = 128,          # image size
+                frames = 4,               # number of frames
+                image_patch_size = 16,     # image patch size
+                frame_patch_size = 2,      # frame patch size
+                num_classes = 64,
+                dim = 64,
+                spatial_depth = 6,         # depth of the spatial transformer
+                temporal_depth = 6,        # depth of the temporal transformer
+                heads = 8,
+                mlp_dim = 64
+            ),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
-            nn.ReLU(),
-            nn.Flatten(),
+            nn.Flatten()
         )
 
+        # print(f"reshape: {self.reshape_ob(th.as_tensor(observation_space.sample()[None])).shape}")
+
         # Compute shape by doing one forward pass
-        with th.no_grad():
-            n_flatten = self.cnn(
-                th.as_tensor(observation_space.sample()[None]).float()
+        with th.no_grad():            
+            n_flatten = self.v(
+                self.reshape_ob(th.as_tensor(observation_space.sample()[None])).float()
             ).shape[1]
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
-        print(f"obs: {observations.shape}")
-        return self.linear(self.cnn(observations))
+        observations = self.reshape_ob(observations)
+        # print(f"ob shape: {observations.shape}")
+        return self.linear(self.v(observations))
+    
+    def reshape_ob(self, observations: th.Tensor) -> th.Tensor:
+        num_groups = 3
+        channels_per_group = observations.shape[1] // num_groups
+
+        # Reshape the image matrix
+        target_shape = (observations.shape[0], num_groups, channels_per_group, observations.shape[2], observations.shape[3])
+        reshaped_observations = observations.view(*target_shape)
+        # print(f"reshaped obs: {reshaped_observations.shape}")
+        return reshaped_observations
