@@ -120,6 +120,8 @@ class VistaEnv(gym.Env):
         self._world: World = World(trace_paths, trace_config)
         self._display = Display(self._world, display_config=display_config)
         self._width, self._height = 0, 0
+
+        self.render_mode = "rgb_array"
         
         agent = self._world.spawn_agent(car_config)
         for sensor_config in sensors_configs:
@@ -160,13 +162,15 @@ class VistaEnv(gym.Env):
         i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
         obs = image[i1:i2, j1:j2]
         obs = resize(obs, (128, 128)) # for SeqVit
+        # obs = obs.astype('uint8')
+        obs = (obs*255).round(0).astype(np.uint8)
         return obs
 
     def reset(self, seed=1, options=None):
         super().reset(seed=seed, options=options)
         
-        # self._world.set_seed(seed)
-        self.set_seed(seed)
+        self._world.set_seed(seed)
+        # self.set_seed(seed)
         self._world.reset({self._world.agents[0].id: initial_dynamics_fn})
         # self._world.reset()
         self._display.reset()
@@ -254,7 +258,7 @@ class VistaEnv(gym.Env):
         if self.render_mode == "rgb_array":
             agent = self._world.agents[0]
             observations = self._append_agent_id(agent.observations)
-            observation = observations['camera_front']
+            observation = observations[agent.id]['camera_front']
             observation = self._preprocess(observation)
             observation = np.transpose(observation, (2,0,1))
             return observation
