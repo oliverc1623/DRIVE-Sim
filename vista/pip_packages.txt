@@ -7,3 +7,4 @@ pip install ffio
 pip install pyrender
 pip install descartes
 pip install wandb
+pip install vit_pytorch
