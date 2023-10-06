@@ -3,6 +3,7 @@ from gymnasium import spaces
 
 from typing import Optional, List, Dict, Any
 import numpy as np
+import random 
 
 from vista import World
 from vista import Display
@@ -15,7 +16,7 @@ def default_terminal_condition(task, agent_id, **kwargs):
     agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
 
     def _check_out_of_lane():
-        road_half_width = agent.trace.road_width / 2.
+        road_half_width = agent.trace.road_width / 2. # 4 for training, 2 for eval
         return np.abs(agent.relative_state.x) > road_half_width
 
     def _check_exceed_max_rot():
@@ -24,11 +25,13 @@ def default_terminal_condition(task, agent_id, **kwargs):
 
     out_of_lane = _check_out_of_lane()
     exceed_max_rot = _check_exceed_max_rot()
-    done = out_of_lane or exceed_max_rot or agent.done
+    agent_done = agent.done
+    done = out_of_lane or exceed_max_rot or agent_done
     other_info = {
         'done': done,
         'out_of_lane': out_of_lane,
         'exceed_max_rot': exceed_max_rot,
+        'agent_done': agent_done
     }
 
     return done, other_info
@@ -41,17 +44,39 @@ def default_reward_fn(task, agent_id, **kwargs):
     return reward, {}
 
 
-def lane_reward_fn(task, agent_id, **kwargs):
+def get_rotation_penalty(agent_orientation, target_orientation, max_rotation_penalty):
+    orientation_difference = abs(agent_orientation - target_orientation)
+    rotation_threshold = 0.01  # Adjust this threshold as needed
+    rotation_penalty = max(0, orientation_difference - rotation_threshold)
+    penalty = -rotation_penalty * max_rotation_penalty
+    return penalty
+
+def lane_reward_fn(task, agent_id, prev_yaw, **kwargs):
     agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
     
     road_width = agent.trace.road_width
     z_lat = road_width / 2
     q_lat = np.abs(agent.relative_state.x)
-    lane_reward = max(0, round(1 - (q_lat/z_lat)**2, 4))
-    
-    reward = 0 if kwargs['done'] else lane_reward
+    lane_reward = 1 - (q_lat/z_lat)**2
+
+    rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], 1)
+    # print(f"rotation penalty: {rotation_penalty}")
+
+    reward = lane_reward + rotation_penalty
+
+    reward = -1 if kwargs['done'] else reward
     return reward, {}
 
+def initial_dynamics_fn(x, y, yaw, steering, speed):
+    x_perturbation = 1
+    yaw_perturbation = .001
+    return [
+        x + random.uniform(-x_perturbation,x_perturbation),
+        y,
+        yaw + random.uniform(-yaw_perturbation,yaw_perturbation),
+        steering,
+        speed,
+    ]
 
 class VistaEnv(gym.Env):
     """ This class defines a simple lane following task in Vista. It basically
@@ -112,6 +137,7 @@ class VistaEnv(gym.Env):
 
         self._distance = 0
         self._prev_xy = np.zeros((2, ))
+        self._prev_yaw = 0.0
         
         self._preprocess_config = preprocess_config
         if self._preprocess_config['crop_roi']:
@@ -134,18 +160,21 @@ class VistaEnv(gym.Env):
         
         # self._world.set_seed(seed)
         self.set_seed(seed)
-        self._world.reset()
+        self._world.reset({self._world.agents[0].id: initial_dynamics_fn})
+        # self._world.reset()
         self._display.reset()
         agent = self._world.agents[0]
         observations = self._append_agent_id(agent.observations)
         self._distance = 0
         self._prev_xy = np.zeros((2, ))
+        self._prev_yaw = 0.0
 
         # Set info
         info = {}
         info['out_of_lane'] = False
         info['exceed_rot'] = False
         info['distance'] = self._distance
+        info['agent_done'] = False
 
         observation = observations[agent.id]['camera_front']
         observation = self._preprocess(observation)
@@ -173,14 +202,22 @@ class VistaEnv(gym.Env):
         info = misc.fetch_agent_info(agent)
         info['out_of_lane'] = info_from_terminal_condition['out_of_lane']
         info['exceed_max_rot'] = info_from_terminal_condition['exceed_max_rot']
+        info['agent_done'] = info_from_terminal_condition['agent_done']
 
         # Define reward
-        reward, _ = self.config['reward_fn'](self, agent.id,
+        reward, _ = self.config['reward_fn'](self, agent.id, self._prev_yaw,
                                              **info_from_terminal_condition)
 
         current_xy = agent.ego_dynamics.numpy()[:2]
+        # print(f"curr xy: {current_xy}")
+        # print(f"prev xy: {self._prev_xy}")
         self._distance += np.linalg.norm(current_xy - self._prev_xy)
         self._prev_xy = current_xy
+
+        # print(f"prev yaw: {self._prev_yaw}")
+        # print(f"current yaw: {agent.ego_dynamics.numpy()[2]}\n")
+        self._prev_yaw = agent.ego_dynamics.numpy()[2]
+    
         info['distance'] = self._distance
 
         truncated = False

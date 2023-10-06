@@ -28,7 +28,7 @@ device = ("cuda:3" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
-def make_env(rank: int, seed: int = 0):
+def make_env(rank: int, seed: int = 47):
     """
     Utility function for multiprocessed env.
 
@@ -73,53 +73,52 @@ def make_env(rank: int, seed: int = 0):
                display_config = display_config,
                preprocess_config = preprocess_config,
                sensors_configs = [camera_config])
-        env.reset(seed=seed + rank)
+        env.reset(seed=seed)
         return env
     set_random_seed(seed)
     return _init
 
 learning_configs = {
     "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 10_000,
+    "total_timesteps": 100_000,
     "env_id": "VISTA",
     "learning_rate": 0.0003
 }
 
 
 if __name__ == "__main__":
-    num_cpu = 4  # Number of processes to use
-    vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    # Frame-stacking with 4 frames
-    vec_env = VecFrameStack(vec_env, n_stack=4)
-
-    # Create log dir
-    log_dir = "tmp/"
-    os.makedirs(log_dir, exist_ok=True)
-    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance'))
-
-    policy_kwargs = dict(
-        features_extractor_class=CustomCNN,
-        features_extractor_kwargs=dict(features_dim=256),
-    )
-
-    torch.cuda.empty_cache()
+    for i in range(4):
+        torch.cuda.empty_cache()
+        num_cpu = 4 # Number of processes to use
+        vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+        # Frame-stacking with 4 frames
+        # vec_env = VecFrameStack(vec_env, n_stack=4)
     
-    model = SAC(
-        "CnnPolicy", 
-        vec_env,
-        learning_rate = learning_configs['learning_rate'],
-        buffer_size=40,
-        batch_size=64,
-        gradient_steps=10,
-        policy_kwargs=policy_kwargs, 
-        verbose=1,
-        device=device,
-    )
-    timesteps = learning_configs['total_timesteps']
-    model.learn(
-        total_timesteps=timesteps, 
-        progress_bar=True
-    )
+        # Create log dir
+        log_dir = f"tmp_no_stack_trial{i}/"
+        os.makedirs(log_dir, exist_ok=True)
+        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
     
-    # Save the agent
-    model.save("vista_a2c_2048_mycnn_stack")
+        policy_kwargs = dict(
+            features_extractor_class=CustomCNN,
+            features_extractor_kwargs=dict(features_dim=256),
+        )
+        model = SAC(
+            "CnnPolicy", 
+            vec_env,
+            learning_rate = learning_configs['learning_rate'],
+            buffer_size=64,
+            batch_size=16,
+            policy_kwargs=policy_kwargs, 
+            verbose=1,
+            device=device,
+        )
+        timesteps = learning_configs['total_timesteps']
+        model.learn(
+            total_timesteps=timesteps, 
+            progress_bar=True
+        )
+
+        # Save the agent
+        model.save(f"vista_sac_nostack_mycnn_trial{i}")
+  
