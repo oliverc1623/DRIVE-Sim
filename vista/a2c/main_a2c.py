@@ -8,6 +8,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('VistaEnv.py')))
 from VistaEnv import VistaEnv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))))
 from CustomCNN import CustomCNN
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('SeqTransformer.py'))))
+from SeqTransformer import SeqTransformer
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('LoggingCallback.py'))))
 from LoggingCallback import LoggingCallback
 
@@ -20,7 +22,7 @@ import torch
 from stable_baselines3 import A2C
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder, VecFrameStack
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder, VecFrameStack, StackedObservations
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 
@@ -29,7 +31,7 @@ device = ("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
-def make_env(rank: int, seed: int = 0):
+def make_env(rank: int, seed: int = 47):
     """
     Utility function for multiprocessed env.
 
@@ -74,7 +76,7 @@ def make_env(rank: int, seed: int = 0):
                display_config = display_config,
                preprocess_config = preprocess_config,
                sensors_configs = [camera_config])
-        env.reset(seed=seed + rank)
+        env.reset(seed=seed)
         return env
     set_random_seed(seed)
     return _init
@@ -87,21 +89,20 @@ learning_configs = {
 }
 
 if __name__ == "__main__":
-
-    for i in range(4):
+    for i in range(1):
         torch.cuda.empty_cache()
-        num_cpu = 4  # Number of processes to use
+        num_cpu = 1 # Number of processes to use
         vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
         # Frame-stacking with 4 frames
         vec_env = VecFrameStack(vec_env, n_stack=4)
-    
+
         # Create log dir
-        log_dir = f"tmp_perturbation_trial{i}/"
+        log_dir = f"tmp_seqvit_vista_trial{i}/"
         os.makedirs(log_dir, exist_ok=True)
-        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance'))
-    
+        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
+
         policy_kwargs = dict(
-            features_extractor_class=CustomCNN,
+            features_extractor_class=SeqTransformer,
             features_extractor_kwargs=dict(features_dim=256),
         )
         model = A2C(
@@ -119,4 +120,4 @@ if __name__ == "__main__":
         )
 
         # Save the agent
-        model.save(f"vista_a2c_2048_mycnn_trial{i}")
+        model.save(f"vista_a2c_seqvit_10k_mycnn_trial{i}")
