@@ -13,6 +13,8 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 import torch as th
 import torch.nn as nn
 
+import numpy as np
+
 class SeqTransformer(BaseFeaturesExtractor):
     """
     :param observation_space: (gym.Space)
@@ -23,7 +25,6 @@ class SeqTransformer(BaseFeaturesExtractor):
         super().__init__(observation_space, features_dim)
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
-        # print(f"ob space: {observation_space}")
         
         self.v = nn.Sequential(
             ViT(
@@ -31,38 +32,35 @@ class SeqTransformer(BaseFeaturesExtractor):
                 frames = 4,               # number of frames
                 image_patch_size = 16,     # image patch size
                 frame_patch_size = 2,      # frame patch size
-                num_classes = 64,
+                num_classes = 128,
                 dim = 64,
                 spatial_depth = 6,         # depth of the spatial transformer
                 temporal_depth = 6,        # depth of the temporal transformer
                 heads = 8,
-                mlp_dim = 64
+                mlp_dim = 32
             ),
             nn.ReLU(),
             nn.Flatten()
         )
 
-        # print(f"reshape: {self.reshape_ob(th.as_tensor(observation_space.sample()[None])).shape}")
-
         # Compute shape by doing one forward pass
         with th.no_grad():            
             n_flatten = self.v(
-                self.reshape_ob(th.as_tensor(observation_space.sample()[None])).float()
+                self.reshape_ob(th.tensor(observation_space.sample()[None])).float()
             ).shape[1]
 
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
         observations = self.reshape_ob(observations)
-        # print(f"ob shape: {observations.shape}")
         return self.linear(self.v(observations))
     
-    def reshape_ob(self, observations: th.Tensor) -> th.Tensor:
-        num_groups = 3
-        channels_per_group = observations.shape[1] // num_groups
-
-        # Reshape the image matrix
-        target_shape = (observations.shape[0], num_groups, channels_per_group, observations.shape[2], observations.shape[3])
-        reshaped_observations = observations.view(*target_shape)
-        # print(f"reshaped obs: {reshaped_observations.shape}")
-        return reshaped_observations
+    def reshape_ob(self, a: th.Tensor) -> th.Tensor:
+        batch_size = a.shape[0]
+        squares = []
+        for i in range(batch_size):
+            s0, s1, s2, s3 = a[0].split(128, 2)
+            squares.append(torch.stack([s0, s1, s2, s3]))
+        transposed_squares = [s.permute(1, 0, 2, 3) for s in squares]
+        s = torch.stack(transposed_squares)
+        return s
