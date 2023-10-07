@@ -47,17 +47,31 @@ def default_terminal_condition(task, agent_id, **kwargs):
         'out_of_lane': out_of_lane,
         'exceed_max_rot': exceed_max_rot,
         'crashed': crashed,
+        'agent_done': agent.done
     }
 
     return done, other_info
 
+def get_rotation_penalty(agent_orientation, target_orientation, max_rotation_penalty):
+    orientation_difference = abs(agent_orientation - target_orientation)
+    rotation_threshold = 0.01  # Adjust this threshold as needed
+    rotation_penalty = max(0, orientation_difference - rotation_threshold)
+    penalty = -rotation_penalty * max_rotation_penalty
+    return penalty
 
-def default_reward_fn(task, agent_id, **kwargs):
-    """ An example definition of reward function. """
-    reward = -1 if kwargs['done'] else 0  # simply encourage survival
+def default_reward_fn(task, agent_id, prev_yaw, **kwargs):
+    agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
+    
+    road_width = agent.trace.road_width
+    z_lat = road_width / 2
+    q_lat = np.abs(agent.relative_state.x)
+    lane_reward = 1 - (q_lat/z_lat)**2
 
+    rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], 1)
+
+    reward = lane_reward + rotation_penalty
+    reward = -1 if kwargs['done'] else reward
     return reward, {}
-
 
 def initial_dynamics_fn(x, y, yaw, steering, speed):
     x_perturbation = 1
@@ -162,6 +176,8 @@ class VistaMAEnv(gym.Env):
             self._height = 128
 
         self._distance = 0
+        self._prev_xy = np.zeros((2, ))
+        self._prev_yaw = 0.0
 
         self.observation_space = spaces.Box(
             low=0, high=255,
@@ -195,7 +211,6 @@ class VistaMAEnv(gym.Env):
         
         # self._world.set_seed(seed)
         self.set_seed(seed)
-        # self._world.reset({self._world.agents[0].id: initial_dynamics_fn})
 
         # Reset world; all agents are initialized at the same pointer to the trace
         new_trace_index, new_segment_index, new_frame_index = \
@@ -252,10 +267,14 @@ class VistaMAEnv(gym.Env):
         observation = self._preprocess(observation, self._is_seq)
         observation = np.transpose(observation, (2,0,1))
 
+        self._distance = 0
+        self._prev_xy = np.zeros((2, ))
+        self._prev_yaw = 0.0
+
         return observation, info
 
 
-    def step(self, actions, dt=1 / 30.):
+    def step(self, action, dt=1 / 30.):
         """ Step the environment. This includes updating agents' states, synthesizing
         agents' observations, checking terminal conditions, and computing rewards.
 
@@ -275,12 +294,20 @@ class VistaMAEnv(gym.Env):
         """
         # Update agents' dynamics (state)
         for agent in self.world.agents:
-            action = actions[agent.id]
-            agent.step_dynamics(action, dt=dt)
+            if agent != self.ego_agent:
+                botaction = np.array([0.0, 0.0])
+                agent.step_dynamics(botaction, dt=dt)
+
+        action = np.array([action[0], agent.human_speed])
+        self.ego_agent.step_dynamics(action, dt=dt)
+        self.ego_agent.step_sensors()
 
         # Get agents' sensory measurement
         self._sensor_capture()
-        observations = {_a.id: _a.observations for _a in self.world.agents}
+        observations = self.ego_agent.observations
+        observation = observations['camera_front']
+        observation = self._preprocess(observation)
+        observation = np.transpose(observation, (2,0,1))
 
         # Check terminal conditions
         dones = dict()
@@ -295,14 +322,28 @@ class VistaMAEnv(gym.Env):
         reward_fn = self.config['reward_fn']
         for agent in self.world.agents:
             rewards[agent.id], _ = reward_fn(
-                self, agent.id, **infos_from_terminal_condition[agent.id])
+                self, agent.id, self._prev_yaw, **infos_from_terminal_condition[agent.id])
+
+        # metrics
+        current_xy = self.ego_agent.ego_dynamics.numpy()[:2]
+        self._distance += np.linalg.norm(current_xy - self._prev_xy)
+        self._prev_xy = current_xy
+        self._prev_yaw = self.ego_agent.ego_dynamics.numpy()[2]
 
         # Get info
-        infos = dict()
+        # infos = dict()
+        info = misc.fetch_agent_info(self.ego_agent)
+        ego_id = self.ego_agent.id
+        info['out_of_lane'] = infos_from_terminal_condition[ego_id]['out_of_lane']
+        info['exceed_max_rot'] = infos_from_terminal_condition[ego_id]['exceed_max_rot']
+        info['agent_done'] = infos_from_terminal_condition[ego_id]['agent_done']
+        info['distance'] = self._distance
 
-        return observations, rewards, dones, infos
+        truncated = False
 
+        return observation, rewards[self.ego_agent.id], dones[self.ego_agent.id], truncated, info
 
+    
     def set_seed(self, seed) -> None:
         """ Set random seed.
 
@@ -391,6 +432,17 @@ class VistaMAEnv(gym.Env):
         """ Random seed for the task and the associated :class:`World`. """
         return self._seed
 
+    def render(self):
+        # agent is represented as a cross, rest as a dot
+        if self.render_mode == "rgb_array":
+            observations = self.ego_agent.observations
+            observation = observations['camera_front']
+            observation = self._preprocess(observation, self._is_seq)
+            observation = np.transpose(observation, (2,0,1))
+            return observation
+
+    def close(self):
+        pass
 
 
 def compute_overlap(poly: Box, polys: List[Box]) -> List[float]:
