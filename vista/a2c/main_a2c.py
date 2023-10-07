@@ -17,6 +17,9 @@ from LoggingCallback import LoggingCallback
 import copy
 import time
 import torch
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
 
 # SB3
 from stable_baselines3 import A2C
@@ -83,7 +86,7 @@ def make_env(rank: int, seed: int = 47):
 
 learning_configs = {
     "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 100,
+    "total_timesteps": 10_000,
     "env_id": "VISTA",
     "learning_rate": 0.0003
 }
@@ -91,33 +94,44 @@ learning_configs = {
 if __name__ == "__main__":
     for i in range(1):
         torch.cuda.empty_cache()
-        num_cpu = 1 # Number of processes to use
+        num_cpu = 4 # Number of processes to use
         vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
         # Frame-stacking with 4 frames
-        vec_env = VecFrameStack(vec_env, n_stack=4)
+        vec_env = VecFrameStack(vec_env, n_stack=4, channels_order="last")
+        
+        for i in range(n_steps):
+            # Random action
+            action = env.action_space.sample()
+            obs, reward, terminated, truncated, info = env.step(action)
+            print(f"reward: {reward}")
+            obs = np.transpose(obs, (1,2,0))
+            plt.imsave(obs, f'im{i}')
+            time.sleep(1)
+            if terminated:
+                obs, info = env.reset()
 
-        # Create log dir
-        log_dir = f"tmp_seqvit_vista_trial{i}/"
-        os.makedirs(log_dir, exist_ok=True)
-        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
+        # # Create log dir
+        # log_dir = f"tmp_seqvit_vista_trial{i}/"
+        # os.makedirs(log_dir, exist_ok=True)
+        # vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
 
-        policy_kwargs = dict(
-            features_extractor_class=SeqTransformer,
-            features_extractor_kwargs=dict(features_dim=256),
-        )
-        model = A2C(
-            "CnnPolicy", 
-            vec_env,
-            learning_rate = learning_configs['learning_rate'],
-            policy_kwargs=policy_kwargs, 
-            verbose=1,
-            device=device
-        )
-        timesteps = learning_configs['total_timesteps']
-        model.learn(
-            total_timesteps=timesteps, 
-            progress_bar=True
-        )
+        # policy_kwargs = dict(
+        #     features_extractor_class=SeqTransformer,
+        #     features_extractor_kwargs=dict(features_dim=256),
+        # )
+        # model = A2C(
+        #     "CnnPolicy", 
+        #     vec_env,
+        #     learning_rate = learning_configs['learning_rate'],
+        #     policy_kwargs=policy_kwargs, 
+        #     verbose=1,
+        #     device=device
+        # )
+        # timesteps = learning_configs['total_timesteps']
+        # model.learn(
+        #     total_timesteps=timesteps, 
+        #     progress_bar=True
+        # )
 
-        # Save the agent
-        model.save(f"vista_a2c_seqvit_10k_mycnn_trial{i}")
+        # # Save the agent
+        # model.save(f"vista_a2c_seqvit_10k_mycnn_trial{i}")
