@@ -29,38 +29,35 @@ class SeqTransformer(BaseFeaturesExtractor):
         self.v = nn.Sequential(
             ViT(
                 image_size = 128,          # image size
-                frames = 4,               # number of frames
+                frames = 8,               # number of frames
                 image_patch_size = 16,     # image patch size
                 frame_patch_size = 2,      # frame patch size
-                num_classes = 128,
-                dim = 64,
+                num_classes = features_dim,
+                dim = 1024,
                 spatial_depth = 6,         # depth of the spatial transformer
                 temporal_depth = 6,        # depth of the temporal transformer
                 heads = 8,
-                mlp_dim = 32
-            ),
-            nn.ReLU(),
-            nn.Flatten()
+                mlp_dim = 2048
+            )
         )
-
         # Compute shape by doing one forward pass
-        with th.no_grad():            
-            n_flatten = self.v(
-                self.reshape_ob(th.tensor(observation_space.sample()[None])).float()
-            ).shape[1]
+        # with th.no_grad():            
+        #     n_flatten = self.v(
+        #         self.reshape_ob(th.tensor(observation_space.sample()[None])/255).float()
+        #     ).shape[1]
 
-        self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
+        # self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
         observations = self.reshape_ob(observations)
-        return self.linear(self.v(observations))
+        return self.v(observations) # self.linear(self.v(observations))
     
     def reshape_ob(self, a: th.Tensor) -> th.Tensor:
         batch_size = a.shape[0]
         squares = []
         for i in range(batch_size):
-            s0, s1, s2, s3 = a[0].split(128, 2)
-            squares.append(torch.stack([s0, s1, s2, s3]))
+            s0, s1, s2, s3, s4, s5, s6, s7 = a[0].split(128, 2)
+            squares.append(torch.stack([s0, s1, s2, s3, s4, s5, s6, s7]))
         transposed_squares = [s.permute(1, 0, 2, 3) for s in squares]
         s = torch.stack(transposed_squares)
         return s
