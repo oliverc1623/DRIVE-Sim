@@ -61,15 +61,25 @@ def get_rotation_penalty(agent_orientation, target_orientation, max_rotation_pen
 
 def default_reward_fn(task, agent_id, prev_yaw, **kwargs):
     agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
-    
+    other_agents = [_a for _a in task.world.agents if _a.id != agent_id]
+
+    # compute lane reward
     road_width = agent.trace.road_width
     z_lat = road_width / 2
     q_lat = np.abs(agent.relative_state.x)
     lane_reward = 1 - (q_lat/z_lat)**2
 
+    # compute rotation penalty
     rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], 1)
 
-    reward = lane_reward + rotation_penalty
+    # collision avoidance reward
+    agent2poly = lambda _x: misc.agent2poly(
+        _x, ref_dynamics=agent.human_dynamics)
+    poly = agent2poly(agent).buffer(5)
+    other_polys = list(map(agent2poly, other_agents))
+    overlap = (compute_overlap(poly, other_polys) / poly.area) * 1    
+
+    reward = lane_reward + rotation_penalty - overlap[0]
     reward = -1 if kwargs['done'] else reward
     return reward, {}
 
@@ -258,6 +268,7 @@ class VistaMAEnv(gym.Env):
         info['exceed_rot'] = False
         info['distance'] = self._distance
         info['agent_done'] = False
+        info['crashed'] = False
 
         # Get observation
         self._sensor_capture()
@@ -337,6 +348,7 @@ class VistaMAEnv(gym.Env):
         info['out_of_lane'] = infos_from_terminal_condition[ego_id]['out_of_lane']
         info['exceed_max_rot'] = infos_from_terminal_condition[ego_id]['exceed_max_rot']
         info['agent_done'] = infos_from_terminal_condition[ego_id]['agent_done']
+        info['crashed'] = infos_from_terminal_condition[ego_id]['crashed']
         info['distance'] = self._distance
 
         truncated = False
