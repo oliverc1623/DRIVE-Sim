@@ -48,33 +48,6 @@ Run to list xvfb processes:
 ps aux | grep Xvfb
 ```
 
-4. Install torch 
-
-```
-pip3 install torch torchvision
-```
-
-5. Install the following python dependencies
-
-*Might need to add '--no-cache-dir' for each pip install*
-
-Refer to the original VISTA's [yaml](https://github.com/vista-simulator/vista/blob/main/environment.yaml) for specific versions.
-
-- opencv-python (pip install opencv-python-headless)
-- ffio
-- shapely
-- descartes
-- matplotlib
-- pyrender
-- pickle5
-- h5py
-
-6. Install VISTA package
-
-```
-pip install vista
-```
-
 7. Begin each python file with 
 
 ```
