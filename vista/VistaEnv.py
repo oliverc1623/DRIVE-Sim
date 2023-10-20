@@ -147,13 +147,12 @@ class VistaEnv(gym.Env):
             i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
             self._width, self._height = i2-i1, j2-j1
 
-        use_seqvit = True
-        if use_seqvit:
+        if self._preprocess_config['resize']:
             self._width = 128
             self._height = 128
             
         self.observation_space = spaces.Box(low=0, high=255,
-                                            shape=(3, self._width, self._height), # change just for seq vit
+                                            shape=(3, self._width, self._height),
                                             dtype=np.uint8)
         self.action_space = spaces.Box(low=-1/5.0, high=1/5.0, shape=(1,), dtype=np.float32)
 
@@ -161,9 +160,9 @@ class VistaEnv(gym.Env):
         # Extract ROI
         i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
         obs = image[i1:i2, j1:j2]
-        obs = resize(obs, (128, 128)) # for SeqVit
-        # obs = obs.astype('uint8')
-        obs = (obs*255).round(0).astype(np.uint8)
+        if self._preprocess_config['resize']:
+            obs = resize(obs, (128, 128)) # for SeqVit
+            obs = (obs*255).round(0).astype(np.uint8)
         return obs
 
     def reset(self, seed=1, options=None):
