@@ -5,6 +5,8 @@ from typing import Optional, List, Dict, Any
 import numpy as np
 import random 
 from skimage.transform import resize
+from skimage.color import rgb2gray
+from skimage.filters import threshold_otsu
 
 from vista import World
 from vista import Display
@@ -147,13 +149,18 @@ class VistaEnv(gym.Env):
             i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
             self._width, self._height = i2-i1, j2-j1
 
-        use_seqvit = True
-        if use_seqvit:
+        if self._preprocess_config['resize']:
             self._width = 128
             self._height = 128
-            
+
+        obs_shape = (3, self._width, self._height)
+        if self._preprocess_config['grayscale']:
+            obs_shape = (1, self._width, self._height)
+        else:
+            obs_shape = (3, self._width, self._height)
+
         self.observation_space = spaces.Box(low=0, high=255,
-                                            shape=(3, self._width, self._height), # change just for seq vit
+                                            shape=obs_shape,
                                             dtype=np.uint8)
         self.action_space = spaces.Box(low=-1/5.0, high=1/5.0, shape=(1,), dtype=np.float32)
 
@@ -161,9 +168,15 @@ class VistaEnv(gym.Env):
         # Extract ROI
         i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
         obs = image[i1:i2, j1:j2]
-        obs = resize(obs, (128, 128)) # for SeqVit
-        # obs = obs.astype('uint8')
-        obs = (obs*255).round(0).astype(np.uint8)
+        if self._preprocess_config['resize']:
+            obs = resize(obs, (128, 128), anti_aliasing=True)
+        if self._preprocess_config['grayscale']:
+            obs = rgb2gray(obs)
+            if self._preprocess_config['binary']:
+                thresh = threshold_otsu(obs)
+                obs = obs > thresh # binarize image
+                obs = np.expand_dims(obs, axis=0) # extend 1 dim for cnn
+                obs = obs.astype(np.uint8)
         return obs
 
     def reset(self, seed=1, options=None):
@@ -189,7 +202,8 @@ class VistaEnv(gym.Env):
 
         observation = observations[agent.id]['camera_front']
         observation = self._preprocess(observation)
-        observation = np.transpose(observation, (2,0,1))
+        # if not self._preprocess_config['grayscale']:
+        # observation = np.transpose(observation, (2,0,1))
 
         return observation, info
 
@@ -203,7 +217,8 @@ class VistaEnv(gym.Env):
         observations = agent.observations
         observation = observations['camera_front']
         observation = self._preprocess(observation)
-        observation = np.transpose(observation, (2,0,1))
+        # if not self._preprocess_config['grayscale']:
+        # observation = np.transpose(observation, (2,0,1))
 
         # Define terminal condition
         done, info_from_terminal_condition = self.config['terminal_condition'](
