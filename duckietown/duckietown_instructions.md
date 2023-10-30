@@ -59,7 +59,7 @@ ps aux | grep Xvfb
 
 If you want to run Xvfb in the background, you can use the & symbol at the end of the command:
 ```
-Xvfb :1 -screen 0 1280x1024x24 &
+xvfb :1 -screen 0 1280x1024x24 &
 ```
 
 Remember that if you're running this on a server or headless environment, you might also need to set the DISPLAY environment variable to point to the Xvfb display. For example:
