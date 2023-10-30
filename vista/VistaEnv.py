@@ -167,25 +167,27 @@ class VistaEnv(gym.Env):
     def _preprocess(self, image):
         # grayscale
         if self._preprocess_config['grayscale']:
-            gray_image = rgb2gray(image)
-            gray_image = (gray_image*255).astype('uint8')
+            image = rgb2gray(image)
+            image = (image*255).astype('uint8')
         
         # cropped ROI
         i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
-        cropped_image = gray_image[i1:i2, j1:j2]
+        image = image[i1:i2, j1:j2]
 
         # resize
         if self._preprocess_config['resize']:
-            resized_image = resize(cropped_image, (128, 128), anti_aliasing=True)
+            image = resize(image, (128, 128), anti_aliasing=True)
+            image = (image*255).astype('uint8')
         
         # binarize
         if self._preprocess_config['binary']:
-            thresh = threshold_otsu(resized_image)
-            binary_image = resized_image > thresh
-            binary_image = np.expand_dims(binary_image, axis=0)
-            binary_image = binary_image.astype(np.uint8)
+            thresh = threshold_otsu(image)
+            image = image > thresh
 
-        return binary_image
+        image = np.expand_dims(image, axis=0)
+        # image = image.astype(np.uint8)
+
+        return image
 
     def reset(self, seed=1, options=None):
         super().reset(seed=seed, options=options)
