@@ -165,19 +165,27 @@ class VistaEnv(gym.Env):
         self.action_space = spaces.Box(low=-1/5.0, high=1/5.0, shape=(1,), dtype=np.float32)
 
     def _preprocess(self, image):
-        # Extract ROI
-        i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
-        obs = image[i1:i2, j1:j2]
-        if self._preprocess_config['resize']:
-            obs = resize(obs, (128, 128), anti_aliasing=True)
+        # grayscale
         if self._preprocess_config['grayscale']:
-            obs = rgb2gray(obs)
-            if self._preprocess_config['binary']:
-                thresh = threshold_otsu(obs)
-                obs = obs > thresh # binarize image
-                obs = np.expand_dims(obs, axis=0) # extend 1 dim for cnn
-                obs = obs.astype(np.uint8)
-        return obs
+            gray_image = rgb2gray(image)
+            gray_image = (gray_image*255).astype('uint8')
+        
+        # cropped ROI
+        i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
+        cropped_image = gray_image[i1:i2, j1:j2]
+
+        # resize
+        if self._preprocess_config['resize']:
+            resized_image = resize(cropped_image, (128, 128), anti_aliasing=True)
+        
+        # binarize
+        if self._preprocess_config['binary']:
+            thresh = threshold_otsu(resized_image)
+            binary_image = resized_image > thresh
+            binary_image = np.expand_dims(binary_image, axis=0)
+            binary_image = binary_image.astype(np.uint8)
+
+        return binary_image
 
     def reset(self, seed=1, options=None):
         super().reset(seed=seed, options=options)
@@ -185,7 +193,6 @@ class VistaEnv(gym.Env):
         self._world.set_seed(seed)
         # self.set_seed(seed)
         self._world.reset({self._world.agents[0].id: initial_dynamics_fn})
-        # self._world.reset()
         self._display.reset()
         agent = self._world.agents[0]
         observations = self._append_agent_id(agent.observations)
