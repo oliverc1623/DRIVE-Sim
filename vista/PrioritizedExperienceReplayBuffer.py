@@ -148,3 +148,4 @@ class PrioritizedExperienceReplayBuffer(ReplayBuffer):
             'weights': np.zeros(shape=(batch_size, self.n_envs), dtype=np.float32),
             'indexes': np.zeros(shape=(batch_size, self.n_envs), dtype=np.int32)
         }
+        # comment
