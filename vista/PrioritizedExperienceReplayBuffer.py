@@ -12,6 +12,13 @@ from stable_baselines3.common.buffers import ReplayBuffer
 from stable_baselines3.common.type_aliases import DictReplayBufferSamples
 from stable_baselines3.common.vec_env import VecEnv, VecNormalize
 
+try:
+    # Check memory used by replay buffer when possible
+    import psutil
+except ImportError:
+    psutil = None
+
+
 class PrioritizedExperienceReplayBuffer(ReplayBuffer):
     env: Optional[VecEnv]
 
@@ -118,7 +125,7 @@ class PrioritizedExperienceReplayBuffer(ReplayBuffer):
 
     def _set_priority_sum(self, idx, priority):
         idx += self.buffer_size
-        self.priority_min[idx] = priority_alpha
+        self.priority_min[idx] = priority
         while idx >= 2:
             # Get the index of the parent node
             idx //= 2
@@ -142,11 +149,11 @@ class PrioritizedExperienceReplayBuffer(ReplayBuffer):
         return idx - self.capacity
 
     
-    def sample(self, batch_size, beta):
-        # (self.buffer_size, self.n_envs)
-        samples = {
-            'weights': np.zeros(shape=(batch_size, self.n_envs), dtype=np.float32),
-            'indexes': np.zeros(shape=(batch_size, self.n_envs), dtype=np.int32)
-        }
-        # comment
-        # comment 2
+    # def sample(self, batch_size, beta):
+    #     # (self.buffer_size, self.n_envs)
+    #     samples = {
+    #         'weights': np.zeros(shape=(batch_size, self.n_envs), dtype=np.float32),
+    #         'indexes': np.zeros(shape=(batch_size, self.n_envs), dtype=np.int32)
+    #     }
+    #     # comment
+    #     # comment 2
