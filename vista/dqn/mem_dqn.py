@@ -8,12 +8,12 @@ from itertools import count
 from tree import SumTree
 from utils import set_seed
 import csv
+import numpy as np
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-
 
 # BATCH_SIZE is the number of transitions sampled from the replay buffer
 # GAMMA is the discount factor as mentioned in the previous section
@@ -30,17 +30,9 @@ EPS_DECAY = 1000
 TAU = 0.005
 LR = 1e-4
 
-class PrioritizedReplayBuffer:
-    def __init__(self, state_size, action_size, buffer_size, eps=1e-2, alpha=0.1, beta=0.1):
-        self.tree = SumTree(size=buffer_size)
-
-        # PER params
-        self.eps = eps  # minimal priority, prevents zero probabilities
-        self.alpha = alpha  # determines how much prioritization is used, α = 0 corresponding to the uniform case
-        self.beta = beta  # determines the amount of importance-sampling correction, b = 1 fully compensate for the non-uniform probabilities
-        self.max_priority = eps  # priority for new samples, init as eps
-
-        # transition: state, action, reward, next_state, done
+class ReplayBuffer:
+    def __init__(self, state_size, action_size, buffer_size):
+        # state, action, reward, next_state, done
         self.state = torch.empty(buffer_size, state_size, dtype=torch.float)
         self.action = torch.empty(buffer_size, action_size, dtype=torch.float)
         self.reward = torch.empty(buffer_size, dtype=torch.float)
@@ -54,9 +46,6 @@ class PrioritizedReplayBuffer:
     def add(self, transition):
         state, action, reward, next_state, done = transition
 
-        # store transition index with maximum priority in sum tree
-        self.tree.add(self.max_priority, self.count)
-
         # store transition in the buffer
         self.state[self.count] = torch.as_tensor(state)
         self.action[self.count] = torch.as_tensor(action)
@@ -69,46 +58,9 @@ class PrioritizedReplayBuffer:
         self.real_size = min(self.size, self.real_size + 1)
 
     def sample(self, batch_size):
-        assert self.real_size >= batch_size, "buffer contains less samples than batch size"
+        assert self.real_size >= batch_size
 
-        sample_idxs, tree_idxs = [], []
-        priorities = torch.empty(batch_size, 1, dtype=torch.float)
-
-        # To sample a minibatch of size k, the range [0, p_total] is divided equally into k ranges.
-        # Next, a value is uniformly sampled from each range. Finally the transitions that correspond
-        # to each of these sampled values are retrieved from the tree. (Appendix B.2.1, Proportional prioritization)
-        segment = self.tree.total / batch_size
-        for i in range(batch_size):
-            a, b = segment * i, segment * (i + 1)
-
-            cumsum = random.uniform(a, b)
-            # sample_idx is a sample index in buffer, needed further to sample actual transitions
-            # tree_idx is a index of a sample in the tree, needed further to update priorities
-            tree_idx, priority, sample_idx = self.tree.get(cumsum)
-
-            priorities[i] = priority
-            tree_idxs.append(tree_idx)
-            sample_idxs.append(sample_idx)
-
-        # Concretely, we define the probability of sampling transition i as P(i) = p_i^α / \sum_{k} p_k^α
-        # where p_i > 0 is the priority of transition i. (Section 3.3)
-        probs = priorities / self.tree.total
-
-        # The estimation of the expected value with stochastic updates relies on those updates corresponding
-        # to the same distribution as its expectation. Prioritized replay introduces bias because it changes this
-        # distribution in an uncontrolled fashion, and therefore changes the solution that the estimates will
-        # converge to (even if the policy and state distribution are fixed). We can correct this bias by using
-        # importance-sampling (IS) weights w_i = (1/N * 1/P(i))^β that fully compensates for the non-uniform
-        # probabilities P(i) if β = 1. These weights can be folded into the Q-learning update by using w_i * δ_i
-        # instead of δ_i (this is thus weighted IS, not ordinary IS, see e.g. Mahmood et al., 2014).
-        # For stability reasons, we always normalize weights by 1/maxi wi so that they only scale the
-        # update downwards (Section 3.4, first paragraph)
-        weights = (self.real_size * probs) ** -self.beta
-
-        # As mentioned in Section 3.4, whenever importance sampling is used, all weights w_i were scaled
-        # so that max_i w_i = 1. We found that this worked better in practice as it kept all weights
-        # within a reasonable range, avoiding the possibility of extremely large updates. (Appendix B.2.1, Proportional prioritization)
-        weights = weights / weights.max()
+        sample_idxs = np.random.choice(self.real_size, batch_size, replace=False)
 
         batch = (
             self.state[sample_idxs].to(device),
@@ -117,20 +69,7 @@ class PrioritizedReplayBuffer:
             self.next_state[sample_idxs].to(device),
             self.done[sample_idxs].to(device)
         )
-        return batch, weights, tree_idxs
-
-    def update_priorities(self, data_idxs, priorities):
-        if isinstance(priorities, torch.Tensor):
-            priorities = priorities.detach().cpu().numpy()
-
-        for data_idx, priority in zip(data_idxs, priorities):
-            # The first variant we consider is the direct, proportional prioritization where p_i = |δ_i| + eps,
-            # where eps is a small positive constant that prevents the edge-case of transitions not being
-            # revisited once their error is zero. (Section 3.3)
-            priority = (priority + self.eps) ** self.alpha
-
-            self.tree.update(data_idx, priority)
-            self.max_priority = max(self.max_priority, priority)
+        return batch
 
 class DQN(nn.Module):
     def __init__(self, n_observations, n_actions):
@@ -169,7 +108,7 @@ def plot_durations(show_result=False):
     else:
         plt.clf()
         plt.title('Training...')
-    plt.xlabel('Transitions')
+    plt.xlabel('Episode')
     plt.ylabel('Duration')
     plt.plot(durations_t.numpy())
     # Take 100 episode averages and plot them too
@@ -190,7 +129,7 @@ def optimize_model():
     if memory.real_size < BATCH_SIZE:
         return
     weight = None
-    batch, weights, tree_idxs = memory.sample(BATCH_SIZE)
+    batch = memory.sample(BATCH_SIZE)
     state, action, reward, next_state, done = batch
 
     Q_next = target_net(next_state).max(dim=1).values
@@ -199,11 +138,7 @@ def optimize_model():
     Q = Q[torch.arange(len(action)), action.to(torch.long).flatten()]
 
     assert Q.shape == Q_target.shape, f"{Q.shape}, {Q_target.shape}"
-    weights = None
-    if weights is None:
-        weights = torch.ones_like(Q)
 
-    td_error = torch.abs(Q - Q_target).detach()
     # Compute Huber loss
     criterion = nn.SmoothL1Loss()
     loss = criterion(Q, Q_target)
@@ -219,11 +154,10 @@ def optimize_model():
     for tp, sp in zip(target_net.parameters(), policy_net.parameters()):
         tp.data.copy_((1 - TAU) * tp.data + TAU * sp.data)
 
-    memory.update_priorities(tree_idxs, td_error.cpu().numpy())
-    return loss.item(), td_error
+    return loss.item()
 
 def train(writer, trial_i, csvfile):
-    timesteps = 50_000
+    timesteps = 10_000
     episodes = 0
     done = False
     steps = 0
@@ -272,18 +206,18 @@ if __name__=="__main__":
     n_observations = len(state)
 
     d = []
-    with open('per_dqn_carpolev1.csv', 'w', newline='') as csvfile:
+    with open('mem_dqn_carpolev1.csv', 'w', newline='') as csvfile:
         fieldnames = ['duration', 'trial']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         
-        for i in range(4):
+        for i in range(1):
             policy_net = DQN(n_observations, n_actions).to(device)
             target_net = DQN(n_observations, n_actions).to(device)
             target_net.load_state_dict(policy_net.state_dict())
             
             optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-            memory = PrioritizedReplayBuffer(n_observations, 1, 10000)
+            memory = ReplayBuffer(n_observations, 1, 10000)
             
             steps_done = 0
             step_durations = []
