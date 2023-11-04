@@ -7,25 +7,12 @@ from collections import namedtuple, deque
 from itertools import count
 from tree import SumTree
 from utils import set_seed
+import csv
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-
-env = gym.make("CartPole-v1")
-
-# set up matplotlib
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-
-plt.ion()
-
-torch.manual_seed(0)
-
-# if GPU is to be used
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class PrioritizedReplayBuffer:
     def __init__(self, state_size, action_size, buffer_size, eps=1e-2, alpha=0.1, beta=0.1):
@@ -158,21 +145,6 @@ EPS_DECAY = 1000
 TAU = 0.005
 LR = 1e-4
 
-# Get number of actions from gym action space
-n_actions = env.action_space.n
-# Get the number of state observations
-state, info = env.reset()
-n_observations = len(state)
-
-policy_net = DQN(n_observations, n_actions).to(device)
-target_net = DQN(n_observations, n_actions).to(device)
-target_net.load_state_dict(policy_net.state_dict())
-
-optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-memory = PrioritizedReplayBuffer(n_observations, 1, 10000)
-
-steps_done = 0
-
 def select_action(state):
     global steps_done
     sample = random.random()
@@ -187,8 +159,6 @@ def select_action(state):
             return policy_net(state).max(1)[1].view(1, 1)
     else:
         return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
-
-step_durations = []
 
 def plot_durations(show_result=False):
     plt.figure(1)
@@ -247,48 +217,72 @@ def optimize_model():
     memory.update_priorities(tree_idxs, td_error.cpu().numpy())
     return loss.item(), td_error
 
-if torch.cuda.is_available():
-    num_episodes = 600
-else:
-    num_episodes = 50
-
-timesteps = 50_000
-episodes = 0
-done = False
-steps = 0
-step_durations.append(steps)
-state, _ = env.reset()
-
-for i in range(1, timesteps+1):
-    if done:
-        done = False
-        state, _ = env.reset()
-        episodes += 1
-        step_durations.append(steps)
-        plot_durations()
-        steps = 0
-
-    # Initialize the environment and get it's state
-    # state, info = env.reset()
-    state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-    action = select_action(state).item()
-    observation, reward, terminated, truncated, _ = env.step(action)
-    reward = torch.tensor([reward], device=device)
-    done = terminated or truncated
-    next_state = observation # torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+def train(writer, trial_i, csvfile):
+    timesteps = 1_000
+    episodes = 0
+    done = False
+    steps = 0
+    step_durations.append(steps)
+    state, _ = env.reset()
     
-    # Store the transition in memory
-    memory.add((state, action, reward, next_state, int(done)))
-    
-    # Move to the next state
-    state = next_state
-    
-    # Perform one step of the optimization (on the policy network)
-    optimize_model()
-    steps += 1            
+    for i in range(1, timesteps+1):
+        if done:
+            done = False
+            state, _ = env.reset()
+            episodes += 1
+            step_durations.append(steps)
+            writer.writerow({"duration":steps, "trial": trial_i})
+            csvfile.flush()
+            steps = 0
+
+        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+        action = select_action(state).item()
+        observation, reward, terminated, truncated, _ = env.step(action)
+        reward = torch.tensor([reward], device=device)
+        done = terminated or truncated
+        next_state = observation 
+
+        # Store the transition in memory
+        memory.add((state, action, reward, next_state, int(done)))
+        
+        # Move to the next state
+        state = next_state
+        
+        # Perform one step of the optimization (on the policy network)
+        optimize_model()
+        steps += 1
+    print("Finished timesteps")
 
 
-print('Complete')
-plot_durations(show_result=True)
-plt.ioff()
-plt.show()
+if __name__=="__main__":
+    env = gym.make("CartPole-v1")    
+    # torch.manual_seed(0)
+    # if GPU is to be used
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Get number of actions from gym action space
+    n_actions = env.action_space.n
+    # Get the number of state observations
+    state, info = env.reset()
+    n_observations = len(state)
+
+    d = []
+    with open('data.csv', 'w', newline='') as csvfile:
+        fieldnames = ['duration', 'trial']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        
+        for i in range(4):
+            policy_net = DQN(n_observations, n_actions).to(device)
+            target_net = DQN(n_observations, n_actions).to(device)
+            target_net.load_state_dict(policy_net.state_dict())
+            
+            optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+            memory = PrioritizedReplayBuffer(n_observations, 1, 10000)
+            
+            steps_done = 0
+            step_durations = []
+        
+            print(f"Training trial: {i}")
+            set_seed(env, i)
+            train(writer, i, csvfile)
