@@ -22,6 +22,8 @@ if is_ipython:
 
 plt.ion()
 
+torch.manual_seed(0)
+
 # if GPU is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -186,17 +188,17 @@ def select_action(state):
     else:
         return torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
 
-episode_durations = []
+step_durations = []
 
 def plot_durations(show_result=False):
     plt.figure(1)
-    durations_t = torch.tensor(episode_durations, dtype=torch.float)
+    durations_t = torch.tensor(step_durations, dtype=torch.float)
     if show_result:
         plt.title('Result')
     else:
         plt.clf()
         plt.title('Training...')
-    plt.xlabel('Episode')
+    plt.xlabel('Transitions')
     plt.ylabel('Duration')
     plt.plot(durations_t.numpy())
     # Take 100 episode averages and plot them too
@@ -250,32 +252,41 @@ if torch.cuda.is_available():
 else:
     num_episodes = 50
 
-for i_episode in range(num_episodes):
+timesteps = 50_000
+episodes = 0
+done = False
+steps = 0
+step_durations.append(steps)
+state, _ = env.reset()
+
+for i in range(1, timesteps+1):
+    if done:
+        done = False
+        state, _ = env.reset()
+        episodes += 1
+        step_durations.append(steps)
+        plot_durations()
+        steps = 0
+
     # Initialize the environment and get it's state
-    state, info = env.reset()
+    # state, info = env.reset()
     state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-    for t in count():
-        action = select_action(state).item()
-        observation, reward, terminated, truncated, _ = env.step(action)
-        reward = torch.tensor([reward], device=device)
-        done = terminated or truncated
+    action = select_action(state).item()
+    observation, reward, terminated, truncated, _ = env.step(action)
+    reward = torch.tensor([reward], device=device)
+    done = terminated or truncated
+    next_state = observation # torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
+    
+    # Store the transition in memory
+    memory.add((state, action, reward, next_state, int(done)))
+    
+    # Move to the next state
+    state = next_state
+    
+    # Perform one step of the optimization (on the policy network)
+    optimize_model()
+    steps += 1            
 
-        next_state = torch.tensor(observation, dtype=torch.float32, device=device).unsqueeze(0)
-
-        # Store the transition in memory
-        memory.add((state, action, reward, next_state, int(done)))
-
-        # Move to the next state
-        state = next_state
-
-        # Perform one step of the optimization (on the policy network)
-        optimize_model()
-
-        if done:
-            episode_durations.append(t + 1)
-            # plot_durations()
-            print(t)
-            break
 
 print('Complete')
 plot_durations(show_result=True)
