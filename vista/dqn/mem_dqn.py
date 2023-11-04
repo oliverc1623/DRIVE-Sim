@@ -22,7 +22,7 @@ import torch.nn.functional as F
 # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
 # TAU is the update rate of the target network
 # LR is the learning rate of the ``AdamW`` optimizer
-BATCH_SIZE = 128
+BATCH_SIZE = 64
 GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
@@ -74,9 +74,9 @@ class ReplayBuffer:
 class DQN(nn.Module):
     def __init__(self, n_observations, n_actions):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 128)
-        self.layer2 = nn.Linear(128, 128)
-        self.layer3 = nn.Linear(128, n_actions)
+        self.layer1 = nn.Linear(n_observations, 32)
+        self.layer2 = nn.Linear(32, 32)
+        self.layer3 = nn.Linear(32, n_actions)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -149,15 +149,16 @@ def optimize_model():
     torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
     optimizer.step()
 
-    # Soft update of the target network's weights
-    # θ′ ← τ θ + (1 −τ )θ′
-    for tp, sp in zip(target_net.parameters(), policy_net.parameters()):
-        tp.data.copy_((1 - TAU) * tp.data + TAU * sp.data)
+    with torch.no_grad():
+        # Soft update of the target network's weights
+        # θ′ ← τ θ + (1 −τ )θ′
+        for tp, sp in zip(target_net.parameters(), policy_net.parameters()):
+            tp.data.copy_((1 - TAU) * tp.data + TAU * sp.data)
 
     return loss.item()
 
 def train(writer, trial_i, csvfile):
-    timesteps = 10_000
+    timesteps = 50_000
     episodes = 0
     done = False
     steps = 0
@@ -170,7 +171,7 @@ def train(writer, trial_i, csvfile):
             state, _ = env.reset()
             episodes += 1
             step_durations.append(steps)
-            writer.writerow({"duration":steps, "trial": trial_i})
+            writer.writerow({"episode": episodes, "duration":steps, "trial": trial_i})
             csvfile.flush()
             steps = 0
 
@@ -197,7 +198,7 @@ if __name__=="__main__":
     env = gym.make("CartPole-v1")    
     # torch.manual_seed(0)
     # if GPU is to be used
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # Get number of actions from gym action space
     n_actions = env.action_space.n
@@ -206,18 +207,18 @@ if __name__=="__main__":
     n_observations = len(state)
 
     d = []
-    with open('mem_dqn_carpolev1.csv', 'w', newline='') as csvfile:
-        fieldnames = ['duration', 'trial']
+    with open('mem_dqn_carpolev1_2.csv', 'w', newline='') as csvfile:
+        fieldnames = ['episode', 'duration', 'trial']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         
-        for i in range(1):
+        for i in range(4):
             policy_net = DQN(n_observations, n_actions).to(device)
             target_net = DQN(n_observations, n_actions).to(device)
             target_net.load_state_dict(policy_net.state_dict())
             
             optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-            memory = ReplayBuffer(n_observations, 1, 10000)
+            memory = ReplayBuffer(n_observations, 1, 50_000)
             
             steps_done = 0
             step_durations = []
@@ -225,3 +226,4 @@ if __name__=="__main__":
             print(f"Training trial: {i}")
             set_seed(env, i)
             train(writer, i, csvfile)
+    print("Training complete")
