@@ -81,71 +81,84 @@ def main():
     # LR is the learning rate of the ``AdamW`` optimizer
     BATCH_SIZE = 64
     GAMMA = 0.99
-    EPS = 0.1
+    EPS_START = 0.9
+    EPS_END = 0.05
+    EPS_DECAY = 1000
     TAU = 0.005
     LR = 1e-4
 
     steps_done = 0
 
-    env = gym.make("CartPole-v1")    
-    torch.manual_seed(0)
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    with open('no_frill_dqn.csv', 'w', newline='') as csvfile:
+        fieldnames = ['episode', 'duration']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
 
-    # Initialize replay memory D to capacity N
-    N = 50_000
-    replay_mem = ReplayBuffer(4, 1, N, device)
-    # Initialize action-value function Q with random weights
-    policy_net = DQN(4, 2).to(device)
-    # target_net = DQN(4, 2).to(device)
-    optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
-    # For episode 1 --> M
-    for i in range(1_000):
-        # Initialize the environment and get it's state. Do any preprocessing here
-        state, info = env.reset()
-        state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
-        for t in range(500):
-            # With probability epislon, select random action a_t
-            sample = random.random()
-            if sample < EPS:
-                a_t = torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
-            # otherwise select a_t = max_a Q*(state, action; theta)
-            # t.max(1) will return the largest column value of each row.
-            # second column on max result is index of where max element was
-            # found, so we pick action with the larger expected reward.
-            else:
-                with torch.no_grad():
-                    a_t = policy_net(state).max(1)[1].view(1, 1) 
-
-            # execute action, a_t, in emulator aka env
-            observation, reward, terminated, truncated, _ = env.step(a_t.item())
-            
-            # set s_{t+1} = s_t, a_t, x_{t+1}
-            reward = torch.tensor([reward], device=device)
-            done = terminated or truncated
-            next_state = observation 
-            next_state = torch.tensor(next_state, dtype=torch.float32, device=device).unsqueeze(0)
-            
-            # store transition (s_t, a_t, r_t, s_{t+1}) in D
-            replay_mem.add((state, a_t, reward, next_state, int(done)))
-
-            # sample minibatch (s_j, a_j, r_j, s_{j+1}) (b=64) of transitions from D
-            if replay_mem.real_size > BATCH_SIZE:
-                state_b, action_b, reward_b, next_state_b, done_b = replay_mem.sample(BATCH_SIZE)
-                # max_a' Q(s_{j+1})
-                Q_next = policy_net(next_state_b).max(1)[0]
-                y_i = reward + (1-done) * GAMMA * Q_next
-                Q = policy_net(state_b)[torch.arange(len(action_b)), action_b.to(torch.long).flatten()]
+        env = gym.make("CartPole-v1")    
+        torch.manual_seed(0)
+        device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    
+        # Initialize replay memory D to capacity N
+        N = 50_000
+        replay_mem = ReplayBuffer(4, 1, N, device)
+        # Initialize action-value function Q with random weights
+        policy_net = DQN(4, 2).to(device)
+        # target_net = DQN(4, 2).to(device)
+        optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+        # For episode 1 --> M
+        for i in range(5_000):
+            # Initialize the environment and get it's state. Do any preprocessing here
+            state, info = env.reset()
+            state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+            for t in range(500):
+                # With probability epislon, select random action a_t
+                sample = random.random()
+                eps_threshold = EPS_END + (EPS_START - EPS_END) * \
+                    math.exp(-1. * steps_done / EPS_DECAY)
+                if sample <= eps_threshold:
+                    a_t = torch.tensor([[env.action_space.sample()]], device=device, dtype=torch.long)
+                # otherwise select a_t = max_a Q*(state, action; theta)
+                # t.max(1) will return the largest column value of each row.
+                # second column on max result is index of where max element was
+                # found, so we pick action with the larger expected reward.
+                else:
+                    with torch.no_grad():
+                        a_t = policy_net(state).max(1)[1].view(1, 1) 
+    
+                # execute action, a_t, in emulator aka env
+                observation, reward, terminated, truncated, _ = env.step(a_t.item())
                 
-                loss = torch.mean((y_i - Q)**2)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
+                # set s_{t+1} = s_t, a_t, x_{t+1}
+                reward = torch.tensor([reward], device=device)
+                done = terminated or truncated
+                next_state = observation 
+                next_state = torch.tensor(next_state, dtype=torch.float32, device=device).unsqueeze(0)
+                
+                # store transition (s_t, a_t, r_t, s_{t+1}) in D
+                replay_mem.add((state, a_t, reward, next_state, int(done)))
+    
+                # sample minibatch (s_j, a_j, r_j, s_{j+1}) (b=64) of transitions from D
+                if replay_mem.real_size > BATCH_SIZE:
+                    state_b, action_b, reward_b, next_state_b, done_b = replay_mem.sample(BATCH_SIZE)
+                    # max_a' Q(s_{j+1})
+                    Q_next = policy_net(next_state_b).max(1)[0]
+                    y_i = reward + (1-done) * GAMMA * Q_next
+                    Q = policy_net(state_b)[torch.arange(len(action_b)), action_b.to(torch.long).flatten()]
+                    
+                    loss = torch.mean((y_i - Q)**2)
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+    
+                state = next_state
 
-            state = next_state
-            
-            if done:
-                print(t)
-                break
+                # increment global step counter for 
+                steps_done += 1
+                
+                if done:
+                    writer.writerow({"episode": i, "duration":t})
+                    csvfile.flush()
+                    break
 
 if __name__=="__main__":
     main()
