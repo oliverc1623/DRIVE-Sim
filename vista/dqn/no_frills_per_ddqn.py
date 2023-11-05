@@ -1,3 +1,5 @@
+import sys
+import argparse
 import gymnasium as gym
 import math
 import random
@@ -9,6 +11,7 @@ from tree import SumTree
 from utils import set_seed
 import csv
 import numpy as np
+
 
 import torch
 import torch.nn as nn
@@ -133,6 +136,7 @@ class DQN(nn.Module):
         return self.layer3(x)
 
 def main():
+    print(f"Trial: {sys.argv[1]}")
     # BATCH_SIZE is the number of transitions sampled from the replay buffer
     # GAMMA is the discount factor as mentioned in the previous section
     # EPS_START is the starting value of epsilon
@@ -140,7 +144,7 @@ def main():
     # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
     # TAU is the update rate of the target network
     # LR is the learning rate of the ``AdamW`` optimizer
-    BATCH_SIZE = 64
+    BATCH_SIZE = 128
     GAMMA = 0.99
     EPS_START = 0.9
     EPS_END = 0.05
@@ -150,13 +154,14 @@ def main():
 
     steps_done = 0
 
-    with open('no_frill_per_ddqn.csv', 'w', newline='') as csvfile:
+    with open(f'no_frill_per_ddqn_trial{sys.argv[1]}.csv', 'w', newline='') as csvfile:
         fieldnames = ['episode', 'duration']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
         env = gym.make("CartPole-v1")    
-        torch.manual_seed(0)
+        # torch.manual_seed(sys.argv[1])
+        set_seed(env, int(sys.argv[1]))
         device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     
         # Initialize replay memory D to capacity N
@@ -171,7 +176,7 @@ def main():
         optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
         
         # For episode 1 --> M
-        for i in range(5_000):
+        for i in range(600):
             
             # Initialize the environment and get it's state. Do any preprocessing here
             state, info = env.reset()
