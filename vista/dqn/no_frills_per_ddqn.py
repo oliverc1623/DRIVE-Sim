@@ -19,7 +19,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 class PrioritizedReplayBuffer:
-    def __init__(self, state_size, action_size, buffer_size, device, eps=1e-2, alpha=0.1, beta=0.1):
+    def __init__(self, state_size, action_size, buffer_size, device, eps=1e-2, alpha=0.6, beta=0.4):
         self.tree = SumTree(size=buffer_size)
 
         # PER params
@@ -39,6 +39,7 @@ class PrioritizedReplayBuffer:
         self.real_size = 0
         self.size = buffer_size
         self.device = device
+        self.beta_increment_per_sampling = 0.001
 
     def add(self, transition):
         state, action, reward, next_state, done = transition
@@ -92,6 +93,9 @@ class PrioritizedReplayBuffer:
         # instead of δ_i (this is thus weighted IS, not ordinary IS, see e.g. Mahmood et al., 2014).
         # For stability reasons, we always normalize weights by 1/maxi wi so that they only scale the
         # update downwards (Section 3.4, first paragraph)
+        
+        self.beta = torch.min(torch.tensor([1., self.beta + self.beta_increment_per_sampling]))
+        
         weights = (self.real_size * probs) ** -self.beta
 
         # As mentioned in Section 3.4, whenever importance sampling is used, all weights w_i were scaled
@@ -124,9 +128,9 @@ class PrioritizedReplayBuffer:
 class DQN(nn.Module):
     def __init__(self, n_observations, n_actions):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 32)
-        self.layer2 = nn.Linear(32, 32)
-        self.layer3 = nn.Linear(32, n_actions)
+        self.layer1 = nn.Linear(n_observations, 24)
+        self.layer2 = nn.Linear(24, 24)
+        self.layer3 = nn.Linear(24, n_actions)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -144,17 +148,18 @@ def main():
     # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
     # TAU is the update rate of the target network
     # LR is the learning rate of the ``AdamW`` optimizer
-    BATCH_SIZE = 128
+    BATCH_SIZE = 64
     GAMMA = 0.99
     EPS_START = 0.9
-    EPS_END = 0.05
+    EPS_END = 0.01
     EPS_DECAY = 1000
     TAU = 0.005
     LR = 1e-4
+    TRAIN_START = 1000
 
     steps_done = 0
 
-    with open(f'no_frill_per_ddqn_trial{sys.argv[1]}.csv', 'w', newline='') as csvfile:
+    with open(f'data/no_frill_per_ddqn_trial{sys.argv[1]}.csv', 'w', newline='') as csvfile:
         fieldnames = ['episode', 'duration']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -162,7 +167,7 @@ def main():
         env = gym.make("CartPole-v1")    
         # torch.manual_seed(sys.argv[1])
         set_seed(env, int(sys.argv[1]))
-        device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+        device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     
         # Initialize replay memory D to capacity N
         N = 50_000
@@ -173,7 +178,7 @@ def main():
         target_net = DQN(4, 2).to(device)
         
         # target_net = DQN(4, 2).to(device)
-        optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+        optimizer = optim.AdamW(policy_net.parameters(), lr=LR)
         
         # For episode 1 --> M
         for i in range(600):
@@ -210,7 +215,7 @@ def main():
                 replay_mem.add((state, a_t, reward, next_state, int(done)))
     
                 # sample minibatch (s_j, a_j, r_j, s_{j+1}) (b=64) of transitions from D
-                if replay_mem.real_size > BATCH_SIZE:
+                if replay_mem.real_size > TRAIN_START:
                     #state_b, action_b, reward_b, next_state_b, done_b = replay_mem.sample(BATCH_SIZE)
                     batch, weights, tree_idxs = replay_mem.sample(BATCH_SIZE)
                     state_b, action_b, reward_b, next_state_b, done_b = batch
@@ -229,9 +234,13 @@ def main():
                         
                     td_error = torch.abs(Q - y_i).detach()
 
-                    loss = torch.mean((y_i - Q)**2 * weights.to(device))
+                    loss = torch.mean(((y_i - Q)**2) * weights.to(device))
+                    # criterion = nn.SmoothL1Loss()
+                    # loss = (criterion(Q, y_i) * weights.to(device)).mean()
                     optimizer.zero_grad()
                     loss.backward()
+                    # # In-place gradient clipping
+                    # torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
                     optimizer.step()
                     
                     with torch.no_grad():

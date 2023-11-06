@@ -62,9 +62,9 @@ class ReplayBuffer:
 class DQN(nn.Module):
     def __init__(self, n_observations, n_actions):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 32)
-        self.layer2 = nn.Linear(32, 32)
-        self.layer3 = nn.Linear(32, n_actions)
+        self.layer1 = nn.Linear(n_observations, 24)
+        self.layer2 = nn.Linear(24, 24)
+        self.layer3 = nn.Linear(24, n_actions)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -82,17 +82,18 @@ def main():
     # EPS_DECAY controls the rate of exponential decay of epsilon, higher means a slower decay
     # TAU is the update rate of the target network
     # LR is the learning rate of the ``AdamW`` optimizer
-    BATCH_SIZE = 128
+    BATCH_SIZE = 64
     GAMMA = 0.99
     EPS_START = 0.9
-    EPS_END = 0.05
+    EPS_END = 0.01
     EPS_DECAY = 1000
     TAU = 0.005
     LR = 1e-4
+    TRAIN_START = 1000
 
     steps_done = 0
 
-    with open(f'no_frill_doubledqn_trial{sys.argv[1]}.csv', 'w', newline='') as csvfile:
+    with open(f'data/no_frill_doubledqn_trial{sys.argv[1]}.csv', 'w', newline='') as csvfile:
         fieldnames = ['episode', 'duration']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -111,7 +112,7 @@ def main():
         target_net = DQN(4, 2).to(device)
         
         # target_net = DQN(4, 2).to(device)
-        optimizer = optim.AdamW(policy_net.parameters(), lr=LR, amsgrad=True)
+        optimizer = optim.AdamW(policy_net.parameters(), lr=LR)
         
         # For episode 1 --> M
         for i in range(600):
@@ -148,7 +149,7 @@ def main():
                 replay_mem.add((state, a_t, reward, next_state, int(done)))
     
                 # sample minibatch (s_j, a_j, r_j, s_{j+1}) (b=64) of transitions from D
-                if replay_mem.real_size > BATCH_SIZE:
+                if replay_mem.real_size > TRAIN_START:
                     state_b, action_b, reward_b, next_state_b, done_b = replay_mem.sample(BATCH_SIZE)
                     
                     # Q(s′,argmax a ′Q(s ′,a ′;θ i);θ i−)
@@ -159,8 +160,12 @@ def main():
                     Q = policy_net(state_b)[torch.arange(len(action_b)), action_b.to(torch.long).flatten()]
                     
                     loss = torch.mean((y_i - Q)**2)
+                    # criterion = nn.SmoothL1Loss()
+                    # loss = criterion(Q, y_i)
                     optimizer.zero_grad()
                     loss.backward()
+                    # # In-place gradient clipping
+                    # torch.nn.utils.clip_grad_value_(policy_net.parameters(), 100)
                     optimizer.step()
                     
                     with torch.no_grad():
