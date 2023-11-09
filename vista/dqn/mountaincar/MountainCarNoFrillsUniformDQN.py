@@ -63,9 +63,9 @@ class ReplayBuffer:
 class DQN(nn.Module):
     def __init__(self, n_observations, n_actions):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 24)
-        self.layer2 = nn.Linear(24, 24)
-        self.layer3 = nn.Linear(24, n_actions)
+        self.layer1 = nn.Linear(n_observations, 32)
+        self.layer2 = nn.Linear(32, 32)
+        self.layer3 = nn.Linear(32, n_actions)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -87,7 +87,7 @@ def main():
     GAMMA = 0.99
     EPS_START = 0.9
     EPS_END = 0.01
-    EPS_DECAY = 1000
+    EPS_DECAY = 10000
     TAU = 0.005
     LR = 1e-3
     TRAIN_START = 1000
@@ -119,7 +119,6 @@ def main():
         policy_net = DQN(2, 3).to(device)
         target_net = DQN(2, 3).to(device)
         
-        # target_net = DQN(4, 2).to(device)
         optimizer = optim.AdamW(policy_net.parameters(), lr=LR)
         
         # For episode 1 --> M
@@ -130,7 +129,6 @@ def main():
             state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
             total_reward = 0
             for t in range(200):
-                print(f"t: {t}")
                 
                 # With probability epislon, select random action a_t
                 sample = random.random()
@@ -160,7 +158,7 @@ def main():
                 replay_mem.add((state, a_t, reward, next_state, int(done)))
 
                 # sample minibatch (s_j, a_j, r_j, s_{j+1}) (b=64) of transitions from D
-                if replay_mem.real_size > BATCH_SIZE:
+                if replay_mem.real_size > TRAIN_START:
                     state_b, action_b, reward_b, next_state_b, done_b = replay_mem.sample(BATCH_SIZE)
 
                     # Q(s′,argmax a ′Q(s ′,a ′;θ i);θ i−)

@@ -1,5 +1,7 @@
 import sys
 import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('Tree.py'))))
+from tree import SumTree
 import argparse
 import gymnasium as gym
 import math
@@ -8,11 +10,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
-from tree import SumTree
-from utils import set_seed
 import csv
 import numpy as np
-
 
 import torch
 import torch.nn as nn
@@ -129,9 +128,9 @@ class PrioritizedReplayBuffer:
 class DQN(nn.Module):
     def __init__(self, n_observations, n_actions):
         super(DQN, self).__init__()
-        self.layer1 = nn.Linear(n_observations, 24)
-        self.layer2 = nn.Linear(24, 24)
-        self.layer3 = nn.Linear(24, n_actions)
+        self.layer1 = nn.Linear(n_observations, 32)
+        self.layer2 = nn.Linear(32, 32)
+        self.layer3 = nn.Linear(32, n_actions)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -153,19 +152,19 @@ def main():
     GAMMA = 0.99
     EPS_START = 0.9
     EPS_END = 0.01
-    EPS_DECAY = 1000
+    EPS_DECAY = 10000
     TAU = 0.005
-    LR = 1e-4
+    LR = 1e-3
     TRAIN_START = 1000
 
     steps_done = 0
 
-    with open(f'data/no_frills_per_dqn_trial{sys.argv[1]}.csv', 'w', newline='') as csvfile:
+    with open(f'../data/mountaincar/PER-DQN-MountainCar{sys.argv[1]}.csv', 'w', newline='') as csvfile:
         fieldnames = ['episode', 'duration']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
-        env = gym.make("CartPole-v1")    
+        env = gym.make("MountainCar-v0")    
         
         # set seed for reproducibility
         seed = int(sys.argv[1])
@@ -179,13 +178,12 @@ def main():
     
         # Initialize replay memory D to capacity N
         N = 50_000
-        replay_mem = PrioritizedReplayBuffer(4, 1, N, device)
+        replay_mem = PrioritizedReplayBuffer(2, 1, N, device, alpha=.2, beta=.2)
         
         # Initialize action-value function Q with random weights
-        policy_net = DQN(4, 2).to(device)
-        target_net = DQN(4, 2).to(device)
+        policy_net = DQN(2, 3).to(device)
+        target_net = DQN(2, 3).to(device)
         
-        # target_net = DQN(4, 2).to(device)
         optimizer = optim.AdamW(policy_net.parameters(), lr=LR)
         
         # For episode 1 --> M
@@ -194,6 +192,7 @@ def main():
             # Initialize the environment and get it's state. Do any preprocessing here
             state, info = env.reset()
             state = torch.tensor(state, dtype=torch.float32, device=device).unsqueeze(0)
+            total_reward = 0
             for t in range(500):
                 
                 # With probability epislon, select random action a_t
@@ -212,6 +211,7 @@ def main():
     
                 # execute action, a_t, in emulator aka env
                 observation, reward, terminated, truncated, _ = env.step(a_t.item())
+                total_reward += reward
                 
                 # set s_{t+1} = s_t, a_t, x_{t+1}
                 reward = torch.tensor([reward], device=device)
@@ -261,7 +261,7 @@ def main():
                 steps_done += 1
                 
                 if done:
-                    writer.writerow({"episode": i, "duration":t})
+                    writer.writerow({"episode": i, "duration":total_reward})
                     csvfile.flush()
                     break
 
