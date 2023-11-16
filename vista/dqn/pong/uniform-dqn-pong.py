@@ -60,18 +60,16 @@ class Qnet(nn.Module):
         self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.conv4 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.mlp1 = nn.Linear(1600, 512)
+        self.mlp1 = nn.Linear(3136, 512)
         self.mlp2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
-        x = F.silu(self.conv1(x))
-        x = F.silu(self.conv2(x))
-        x = F.silu(self.conv3(x))
-        x = F.silu(self.conv4(x))
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
         # Flatten before fully connected layers
         x = torch.flatten(x, 1) # flatten all dimensions except batch
-        x = self.mlp1(x)    
+        x = F.relu(self.mlp1(x))
         x = self.mlp2(x)
         return x
 
@@ -173,7 +171,7 @@ def main():
                 history.append(observation_prime)
 
                 observation_prime = np.concatenate(list(history), axis=-1)
-                memory.put((observation,action,reward,observation_prime, done_mask))
+                memory.put((observation,action,reward/100,observation_prime, done_mask))
                 
                 observation = observation_prime
 

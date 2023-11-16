@@ -60,8 +60,8 @@ class Qnet(nn.Module):
         self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.mlp1 = nn.Linear(3136, 256)
-        self.mlp2 = nn.Linear(256, n_actions)
+        self.mlp1 = nn.Linear(3136, 512)
+        self.mlp2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
         x = F.relu(self.conv1(x))
@@ -69,7 +69,7 @@ class Qnet(nn.Module):
         x = F.relu(self.conv3(x))
         # Flatten before fully connected layers
         x = torch.flatten(x, 1) # flatten all dimensions except batch
-        x = self.mlp1(x)    
+        x = F.relu(self.mlp1(x))
         x = self.mlp2(x)
         return x
 
@@ -92,9 +92,13 @@ def train(q, q_target, memory, optimizer):
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     Q = q(s).gather(1,a)
 
+    # print(f"{Q.shape}, {y_i.shape}")
+
     assert Q.shape == y_i.shape, f"{Q.shape}, {y_i.shape}"
 
     loss = F.smooth_l1_loss(Q, y_i)
+
+    print(f"loss: {loss}")
 
     optimizer.zero_grad()
     loss.backward()
@@ -131,7 +135,7 @@ def main():
     print_interval = 1
     train_update_interval = 4
     target_update_interval = 1_000
-    train_start = 100_000
+    train_start = 1_000
     score = 0
     step = 0
     optimizer = optim.Adam(q.parameters(), lr=learning_rate)
