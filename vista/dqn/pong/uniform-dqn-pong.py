@@ -15,7 +15,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 #Hyperparameters
-learning_rate = 1e-4
+learning_rate = 0.00025
 gamma         = 0.99
 buffer_limit  = 10_000
 batch_size    = 32
@@ -95,7 +95,7 @@ def train(q, q_target, memory, optimizer):
     assert Q.shape == y_i.shape, f"{Q.shape}, {y_i.shape}"
 
     loss = F.smooth_l1_loss(Q, y_i)
-    print(f"loss: {loss}")
+    # print(f"loss: {loss}")
     # print(f"TD Error: {(y_i - Q)**2}")
     # print(f"Q-value estimate: {Q}\n")
 
@@ -131,10 +131,11 @@ def main():
     q_target.to(device)
     memory = ReplayBuffer(device)
 
+    total_frames = 1_000_000  # Total number of frames for annealing
     print_interval = 1
     train_update_interval = 4
     target_update_interval = 1_000
-    train_start = 10_000
+    train_start = 50_000
     score = 0
     step = 0
     optimizer = optim.Adam(q.parameters(), lr=learning_rate)
@@ -145,7 +146,6 @@ def main():
         writer.writeheader()
         
         for n_epi in range(5000):
-            epsilon = max(0.01, 0.1 - 0.01*(n_epi/200)) #Linear annealing from 10% to 1%
             observation, info = env.reset()
 
             # preprocess
@@ -161,6 +161,8 @@ def main():
             terminated = False
             truncated = False
             while not terminated and not truncated:
+                # max(final_epsilon, initial_epsilon - (frame_idx / total_frames) * (initial_epsilon - final_epsilon))
+                epsilon = max(0.1, 1.0 - 0.1*(step/total_frames)*(1.0-0.1)) #Linear annealing from 1.0 to 0.1
                 action = q.sample_action(observation, epsilon)      
                 observation_prime, reward, terminated, truncated, info = env.step(action)
                 done_mask = 0.0 if terminated else 1.0
@@ -171,7 +173,7 @@ def main():
                 history.append(observation_prime)
 
                 observation_prime = np.concatenate(list(history), axis=-1)
-                memory.put((observation,action,reward/100,observation_prime, done_mask))
+                memory.put((observation,action,reward,observation_prime, done_mask))
                 
                 observation = observation_prime
 
