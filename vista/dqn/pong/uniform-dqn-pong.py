@@ -131,7 +131,7 @@ def main():
     q_target.to(device)
     memory = ReplayBuffer(device)
 
-    total_frames = 1_000_000  # Total number of frames for annealing
+    total_frames = 100_000  # Total number of frames for annealing
     print_interval = 1
     train_update_interval = 4
     target_update_interval = 1_000
