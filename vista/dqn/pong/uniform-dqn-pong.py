@@ -162,7 +162,7 @@ def main():
             truncated = False
             while not terminated and not truncated:
                 # max(final_epsilon, initial_epsilon - (frame_idx / total_frames) * (initial_epsilon - final_epsilon))
-                epsilon = max(0.1, 1.0 - 0.1*(step/total_frames)*(1.0-0.1)) #Linear annealing from 1.0 to 0.1
+                epsilon = max(0.1, 1.0 - 0.1*(step/total_frames)) #Linear annealing from 1.0 to 0.1
                 action = q.sample_action(observation, epsilon)      
                 observation_prime, reward, terminated, truncated, info = env.step(action)
                 done_mask = 0.0 if terminated else 1.0
