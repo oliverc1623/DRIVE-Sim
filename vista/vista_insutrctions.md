@@ -58,6 +58,7 @@ Replace ":1" if you chose another virtual display port.
 pip install stable-baselines3[extra]
 pip install swig
 pip install gymnasium[box2d]
+pip install minigrid
 pip install vista
 pip install shapely
 pip install ffio
@@ -65,6 +66,13 @@ pip install pyrender
 pip install descartes
 pip install wandb
 pip install vit_pytorch
+```
+
+## How to Make a Video out of Frames from RL Environment
+
+`cd` into directory that stores all frames. Run the command: 
+```
+ffmpeg -framerate 25 -i frame_%04d.png -c:v libx264 -profile:v high -crf 20 -pix_fmt yuv420p ../output.mp4
 ```
 
 ## Alternative VISTA Nautilus installation
