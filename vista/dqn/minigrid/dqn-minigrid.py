@@ -145,7 +145,7 @@ def main():
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         
-        for n_epi in range(300):
+        for n_epi in range(400):
             observation, info = env.reset()
 
             # preprocess
@@ -157,12 +157,15 @@ def main():
                 epsilon = max(0.1, 1.0 - 0.01*(step/total_frames)) #Linear annealing from 1.0 to 0.1
                 action = q.sample_action(observation, epsilon)      
                 observation_prime, reward, terminated, truncated, info = env.step(action)
+
+                # uncomment block to download frames as PNGs
+                # img = Image.fromarray((observation_prime['image']).astype(np.uint8))
+                # img = img.resize((128,128), resample=Image.BOX)
+                # img.save(f"frames/frame_{step:04d}.png")
+                
                 done_mask = 0.0 if terminated else 1.0
                 observation_prime = preprocess(observation_prime['image'])
                 memory.put((observation,action,reward,observation_prime, done_mask))
-
-                img = Image.fromarray(( np.squeeze(observation_prime, axis=2) ).astype(np.uint8))
-                img.save(f"frame{step:02d}.png")
                 
                 observation = observation_prime
 
