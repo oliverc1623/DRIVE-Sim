@@ -145,7 +145,7 @@ def main():
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         
-        for n_epi in range(500):
+        for n_epi in range(300):
             observation, info = env.reset()
 
             # preprocess
@@ -160,6 +160,10 @@ def main():
                 done_mask = 0.0 if terminated else 1.0
                 observation_prime = preprocess(observation_prime['image'])
                 memory.put((observation,action,reward,observation_prime, done_mask))
+
+                img = Image.fromarray(( np.squeeze(observation_prime, axis=2) ).astype(np.uint8))
+                img.save(f"frame{step:02d}.png")
+                
                 observation = observation_prime
 
                 if step>train_start and step%train_update_interval==0:
