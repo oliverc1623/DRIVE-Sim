@@ -17,9 +17,9 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 #Hyperparameters
-learning_rate = 0.00025
+learning_rate = 1e-4
 gamma         = 0.99
-buffer_limit  = 10_000
+buffer_limit  = 50_000
 batch_size    = 32
 
 if torch.cuda.is_available():
@@ -62,7 +62,7 @@ class Qnet(nn.Module):
         self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.mlp1 = nn.Linear(64, 512)
+        self.mlp1 = nn.Linear(1024, 512)
         self.mlp2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
@@ -86,7 +86,7 @@ class Qnet(nn.Module):
 def train(q, q_target, memory, optimizer):
     s,a,r,s_prime,done_mask = memory.sample(batch_size)
 
-    # Q(s′,argmax a ′Q(s ′,a ′;θ i);θ i−)
+    # Rt+1 + γ max_a Q(S_t+1, a; θt). where θ=θ- because we update target params to train params every t steps
     Q_next = q_target(s_prime).max(1)[0].unsqueeze(1)
     # print(f"q targ: {q_target(s_prime)}")
     y_i = r + done_mask * gamma * Q_next
@@ -106,6 +106,8 @@ def train(q, q_target, memory, optimizer):
     loss.backward()
     optimizer.step()
 
+    return Q.mean()
+
 # Convert image to greyscale, resize and normalise pixels
 def preprocess(image):
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -113,7 +115,7 @@ def preprocess(image):
     return image
 
 def main():
-    env = gym.make("MiniGrid-Empty-5x5-v0", render_mode="rgb_array")
+    env = gym.make("MiniGrid-Empty-8x8-v0", render_mode="rgb_array")
     env = RGBImgObsWrapper(env) # Get pixel observations
 
     # set seed for reproducibility
@@ -131,21 +133,22 @@ def main():
     q_target.to(device)
     memory = ReplayBuffer(device)
 
-    total_frames = 100  # Total number of frames for annealing
+    total_frames = 200  # Total number of frames for annealing
     print_interval = 1
     train_update_interval = 4
-    target_update_interval = 1_000
+    target_update_interval = 5_000
     train_start = 1_000
     score = 0
     step = 0
     optimizer = optim.Adam(q.parameters(), lr=learning_rate)
+    q_value = torch.tensor(0)
 
     with open(f'../data/minigrid/Uniform-DQN-Minigrid{sys.argv[1]}.csv', 'w', newline='') as csvfile:
-        fieldnames = ['step', 'score']
+        fieldnames = ['step', 'score', 'Q-value']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
         
-        for n_epi in range(400):
+        for n_epi in range(500):
             observation, info = env.reset()
 
             # preprocess
@@ -170,7 +173,7 @@ def main():
                 observation = observation_prime
 
                 if step>train_start and step%train_update_interval==0:
-                    train(q, q_target, memory, optimizer)
+                    q_value = train(q, q_target, memory, optimizer)
     
                 if step>train_start and step%target_update_interval==0:
                     q_target.load_state_dict(q.state_dict())
@@ -182,7 +185,7 @@ def main():
 
             if n_epi%print_interval==0:
                 print(f"episode :{n_epi}, step: {step}, score : {score/print_interval:.1f}, n_buffer : {memory.size()}, eps : {epsilon*100:.1f}%")
-                writer.writerow({"step": step, "score":score/print_interval})
+                writer.writerow({"step": step, "score":score/print_interval, "Q-value":q_value.item()})
                 csvfile.flush()
                 score = 0.0
 
