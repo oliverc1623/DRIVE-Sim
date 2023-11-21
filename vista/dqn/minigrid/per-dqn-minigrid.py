@@ -85,7 +85,7 @@ class PrioritizedReplayBuffer:
             sample_idxs.append(sample_idx)
 
         probs = priorities / self.tree.total
-        # self.beta = torch.min(torch.tensor([1., self.beta + self.beta_increment_per_sampling]))
+        self.beta = torch.min(torch.tensor([1., self.beta + self.beta_increment_per_sampling]))
         weights = (self.real_size * probs) ** -self.beta
         weights = weights / weights.max()
 
@@ -115,7 +115,7 @@ class Qnet(nn.Module):
         self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.mlp1 = nn.Linear(64, 256)
+        self.mlp1 = nn.Linear(1024, 256)
         self.mlp2 = nn.Linear(256, n_actions)
 
     def forward(self, x):
@@ -167,7 +167,7 @@ def preprocess(image):
     return image
 
 def main():
-    env = gym.make("MiniGrid-Empty-5x5-v0", render_mode="rgb_array")
+    env = gym.make("MiniGrid-Empty-8x8-v0", render_mode="rgb_array")
     env = RGBImgObsWrapper(env) # Get pixel observations
 
     # set seed for reproducibility
@@ -183,7 +183,7 @@ def main():
     q_target.load_state_dict(q.state_dict())
     q.to(device)
     q_target.to(device)
-    memory = PrioritizedReplayBuffer(40, 1, buffer_limit, device, alpha=0.6, beta=0.4)
+    memory = PrioritizedReplayBuffer(64, 1, buffer_limit, device, alpha=0.6, beta=0.4)
 
     total_frames = 200  # Total number of frames for annealing
     print_interval = 1
