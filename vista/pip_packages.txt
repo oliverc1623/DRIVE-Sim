@@ -1,6 +1,7 @@
 pip install stable-baselines3[extra]
 pip install swig
 pip install gymnasium[box2d]
+pip install minigrid
 pip install vista
 pip install shapely
 pip install ffio
