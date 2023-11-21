@@ -40,11 +40,11 @@ class PrioritizedReplayBuffer:
         self.max_priority = eps  # priority for new samples, init as eps
 
         # transition: state, action, reward, next_state, done
-        self.state = torch.empty(buffer_size, state_size, state_size, 1, dtype=torch.float)
-        self.action = torch.empty(buffer_size, action_size, dtype=torch.float)
-        self.reward = torch.empty(buffer_size, dtype=torch.float)
-        self.next_state = torch.empty(buffer_size, state_size, state_size, 1, dtype=torch.float)
-        self.done = torch.empty(buffer_size, dtype=torch.int)
+        self.state = torch.empty(buffer_size, state_size, state_size, 1, dtype=torch.int64)
+        self.action = torch.empty(buffer_size, action_size, dtype=torch.int64)
+        self.reward = torch.empty(buffer_size, dtype=torch.int64)
+        self.next_state = torch.empty(buffer_size, state_size, state_size, 1, dtype=torch.int64)
+        self.done = torch.empty(buffer_size, dtype=torch.int64)
 
         self.count = 0
         self.real_size = 0
@@ -90,17 +90,17 @@ class PrioritizedReplayBuffer:
         weights = weights / weights.max()
 
         batch = (
-            self.state[sample_idxs].to(self.device),
+            self.state[sample_idxs].permute(0,3,1,2).to(self.device),
             self.action[sample_idxs].to(self.device),
             self.reward[sample_idxs].to(self.device),
-            self.next_state[sample_idxs].to(self.device),
+            self.next_state[sample_idxs].permute(0,3,1,2).to(self.device),
             self.done[sample_idxs].to(self.device)
         )
         return batch, weights, tree_idxs
 
     def update_priorities(self, data_idxs, priorities):
         if isinstance(priorities, torch.Tensor):
-            priorities = priorities.detach().cpu().numpy()
+            priorities = priorities.detach().cpu() #.numpy()
 
         for data_idx, priority in zip(data_idxs, priorities):
             priority = (priority + self.eps) ** self.alpha
@@ -115,7 +115,7 @@ class Qnet(nn.Module):
         self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.mlp1 = nn.Linear(1024, 512)
+        self.mlp1 = nn.Linear(64, 512)
         self.mlp2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
@@ -139,10 +139,10 @@ class Qnet(nn.Module):
 def train(q, q_target, memory, optimizer):
     batch, weights, tree_idxs = memory.sample(batch_size)
     s,a,r,s_prime,done_mask = batch
-    print(f"s shape: {s.shape}")
-    print(f"a shape: {a.shape}")
-    print(f"r shape: {r.shape}")
-    print(f"s_prime shape: {s_prime.shape}")
+    s = s.to(torch.float)
+    s_prime = s_prime.to(torch.float)
+    r = r.unsqueeze(-1)
+    done_mask = done_mask.unsqueeze(-1)
 
     # Rt+1 + γ max_a Q(S_t+1, a; θt). where θ=θ- because we update target params to train params every t steps
     Q_next = q_target(s_prime).max(1)[0].unsqueeze(1)
@@ -154,14 +154,14 @@ def train(q, q_target, memory, optimizer):
     assert Q.shape == y_i.shape, f"{Q.shape}, {y_i.shape}"
 
     if weights is None:
-            weights = torch.ones_like(Q)
+        weights = torch.ones_like(Q)
 
     td_error = torch.abs(Q - y_i).detach()
-    loss = F.smooth_l1_loss(Q, y_i)
+    loss = (weights.to(device) * F.smooth_l1_loss(Q, y_i)).mean()
     optimizer.zero_grad()
     loss.backward()
     optimizer.step() 
-    memory.update_priorities(tree_idxs, td_error.cpu().numpy())
+    memory.update_priorities(tree_idxs, td_error.cpu())
     return Q.mean()
 
 # Convert image to greyscale, resize and normalise pixels
@@ -171,7 +171,7 @@ def preprocess(image):
     return image
 
 def main():
-    env = gym.make("MiniGrid-Empty-8x8-v0", render_mode="rgb_array")
+    env = gym.make("MiniGrid-Empty-5x5-v0", render_mode="rgb_array")
     env = RGBImgObsWrapper(env) # Get pixel observations
 
     # set seed for reproducibility
@@ -187,9 +187,9 @@ def main():
     q_target.load_state_dict(q.state_dict())
     q.to(device)
     q_target.to(device)
-    memory = PrioritizedReplayBuffer(64, 1, buffer_limit, device)
+    memory = PrioritizedReplayBuffer(40, 1, buffer_limit, device)
 
-    total_frames = 200  # Total number of frames for annealing
+    total_frames = 100  # Total number of frames for annealing
     print_interval = 1
     train_update_interval = 4
     target_update_interval = 5_000
@@ -216,7 +216,6 @@ def main():
                 epsilon = max(0.1, 1.0 - 0.01*(step/total_frames)) #Linear annealing from 1.0 to 0.1
                 action = q.sample_action(observation, epsilon)      
                 observation_prime, reward, terminated, truncated, info = env.step(action)
-
                 done_mask = 0.0 if terminated else 1.0
                 observation_prime = preprocess(observation_prime['image'])
                 memory.add((observation,action,reward,observation_prime, done_mask))
