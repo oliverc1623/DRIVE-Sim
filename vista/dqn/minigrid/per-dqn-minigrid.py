@@ -10,6 +10,7 @@ import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
 from collections import deque
+from SumTree import SumTree
 
 import torch
 import torch.nn as nn
@@ -28,33 +29,50 @@ else:
     device = 'cpu'
 print(f'device:{device}')
 
-class ReplayBuffer():
-    def __init__(self, device):
-        self.buffer = collections.deque(maxlen=buffer_limit)
-        self.device = device
-    
-    def put(self, transition):
-        self.buffer.append(transition)
-    
+class ReplayBuffer():  # stored as ( s, a, r, s_ ) in SumTree
+    e = 0.01
+    a = 0.6
+    beta = 0.4
+    beta_increment_per_sampling = 0.001
+
+    def __init__(self, capacity):
+        self.tree = SumTree(capacity)
+        self.capacity = capacity
+
+    def _get_priority(self, error):
+        return (np.abs(error) + self.e) ** self.a
+
+    def add(self, error, sample):
+        p = self._get_priority(error)
+        self.tree.add(p, sample)
+
     def sample(self, n):
-        mini_batch = random.sample(self.buffer, n)
-        s_lst, a_lst, r_lst, s_prime_lst, done_mask_lst = [], [], [], [], []
-        
-        for transition in mini_batch:
-            s, a, r, s_prime, done_mask = transition
-            s_lst.append(s)
-            a_lst.append([a])
-            r_lst.append([r])
-            s_prime_lst.append(s_prime)
-            done_mask_lst.append([done_mask])
+        batch = []
+        idxs = []
+        segment = self.tree.total() / n
+        priorities = []
 
-        return (torch.tensor(np.array(s_lst), dtype=torch.float).permute(0,3,1,2).to(self.device))/ 255., torch.tensor(a_lst).to(self.device), \
-               torch.tensor(np.array(r_lst)).to(self.device), \
-               (torch.tensor(np.array(s_prime_lst), dtype=torch.float).permute(0,3,1,2).to(self.device))/ 255., \
-               torch.tensor(np.array(done_mask_lst)).to(self.device)
+        self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])
 
-    def size(self):
-        return len(self.buffer)
+        for i in range(n):
+            a = segment * i
+            b = segment * (i + 1)
+
+            s = random.uniform(a, b)
+            (idx, p, data) = self.tree.get(s)
+            priorities.append(p)
+            batch.append(data)
+            idxs.append(idx)
+
+        sampling_probabilities = priorities / self.tree.total()
+        is_weight = np.power(self.tree.n_entries * sampling_probabilities, -self.beta)
+        is_weight /= is_weight.max()
+
+        return batch, idxs, is_weight
+
+    def update(self, idx, error):
+        p = self._get_priority(error)
+        self.tree.update(idx, p)
 
 class Qnet(nn.Module):
     def __init__(self, n_input_channels, n_actions):
