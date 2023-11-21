@@ -10,7 +10,7 @@ import cv2
 import matplotlib.pyplot as plt
 from PIL import Image
 from collections import deque
-from SumTree import SumTree
+from tree import SumTree
 
 import torch
 import torch.nn as nn
@@ -30,50 +30,83 @@ else:
 print(f'device:{device}')
 
 class PrioritizedReplayBuffer:
-    def __init__(self,):
-        e = 0.01
-        a = 0.6
-        beta = 0.4
-        beta_increment_per_sampling = 0.001
-        
-        def __init__(self, capacity):
-            self.tree = SumTree(capacity)
-            self.capacity = capacity
-        
-        def _get_priority(self, error):
-            return (np.abs(error) + self.e) ** self.a
-        
-        def add(self, error, sample):
-            p = self._get_priority(error)
-            self.tree.add(p, sample)
-        
-        def sample(self, n):
-            batch = []
-            idxs = []
-            segment = self.tree.total() / n
-            priorities = []
-        
-            self.beta = np.min([1., self.beta + self.beta_increment_per_sampling])
-        
-            for i in range(n):
-                a = segment * i
-                b = segment * (i + 1)
-        
-                s = random.uniform(a, b)
-                (idx, p, data) = self.tree.get(s)
-                priorities.append(p)
-                batch.append(data)
-                idxs.append(idx)
-        
-            sampling_probabilities = priorities / self.tree.total()
-            is_weight = np.power(self.tree.n_entries * sampling_probabilities, -self.beta)
-            is_weight /= is_weight.max()
-        
-            return batch, idxs, is_weight
-        
-        def update(self, idx, error):
-            p = self._get_priority(error)
-            self.tree.update(idx, p)
+    def __init__(self, state_size, action_size, buffer_size, device, eps=1e-2, alpha=0.6, beta=0.4):
+        self.tree = SumTree(size=buffer_size)
+
+        # PER params
+        self.eps = eps  # minimal priority, prevents zero probabilities
+        self.alpha = alpha  # determines how much prioritization is used, α = 0 corresponding to the uniform case
+        self.beta = beta  # determines the amount of importance-sampling correction, b = 1 fully compensate for the non-uniform probabilities
+        self.max_priority = eps  # priority for new samples, init as eps
+
+        # transition: state, action, reward, next_state, done
+        self.state = torch.empty(buffer_size, state_size, state_size, 1, dtype=torch.int64)
+        self.action = torch.empty(buffer_size, action_size, dtype=torch.int64)
+        self.reward = torch.empty(buffer_size, dtype=torch.int64)
+        self.next_state = torch.empty(buffer_size, state_size, state_size, 1, dtype=torch.int64)
+        self.done = torch.empty(buffer_size, dtype=torch.int64)
+
+        self.count = 0
+        self.real_size = 0
+        self.size = buffer_size
+        self.device = device
+        self.beta_increment_per_sampling = 0.001
+
+    def add(self, transition):
+        state, action, reward, next_state, done = transition
+
+        # store transition index with maximum priority in sum tree
+        self.tree.add(self.max_priority, self.count)
+
+        # store transition in the buffer
+        self.state[self.count] = torch.as_tensor(state)
+        self.action[self.count] = torch.as_tensor(action)
+        self.reward[self.count] = torch.as_tensor(reward)
+        self.next_state[self.count] = torch.as_tensor(next_state)
+        self.done[self.count] = torch.as_tensor(done)
+
+        # update counters
+        self.count = (self.count + 1) % self.size
+        self.real_size = min(self.size, self.real_size + 1)
+
+    def sample(self, batch_size):
+        assert self.real_size >= batch_size, "buffer contains less samples than batch size"
+
+        sample_idxs, tree_idxs = [], []
+        priorities = torch.empty(batch_size, 1, dtype=torch.float)
+
+        segment = self.tree.total / batch_size
+        for i in range(batch_size):
+            a, b = segment * i, segment * (i + 1)
+            cumsum = random.uniform(a, b)
+            tree_idx, priority, sample_idx = self.tree.get(cumsum)
+            priorities[i] = priority
+            tree_idxs.append(tree_idx)
+            sample_idxs.append(sample_idx)
+
+        probs = priorities / self.tree.total
+        self.beta = torch.min(torch.tensor([1., self.beta + self.beta_increment_per_sampling]))
+        weights = (self.real_size * probs) ** -self.beta
+        weights = weights / weights.max()
+
+        batch = (
+            self.state[sample_idxs].permute(0,3,1,2).to(self.device),
+            self.action[sample_idxs].to(self.device),
+            self.reward[sample_idxs].to(self.device),
+            self.next_state[sample_idxs].permute(0,3,1,2).to(self.device),
+            self.done[sample_idxs].to(self.device)
+        )
+        return batch, weights, tree_idxs
+
+    def update_priorities(self, data_idxs, priorities):
+        if isinstance(priorities, torch.Tensor):
+            priorities = priorities.detach().cpu() #.numpy()
+
+        for data_idx, priority in zip(data_idxs, priorities):
+            priority = (priority + self.eps) ** self.alpha
+
+            self.tree.update(data_idx, priority)
+            self.max_priority = max(self.max_priority, priority)
 
 
 class Qnet(nn.Module):
