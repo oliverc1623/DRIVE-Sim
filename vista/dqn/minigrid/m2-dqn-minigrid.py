@@ -71,7 +71,7 @@ class Qnet(nn.Module):
         self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0)
         self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.mlp1 = nn.Linear(64, 512)
+        self.mlp1 = nn.Linear(1024, 512)
         self.mlp2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
@@ -95,34 +95,30 @@ class Qnet(nn.Module):
 
 def train(q, q_target, memory, optimizer):
     s, a, r, s_prime, done_mask = memory.sample(batch_size)
-
     # Rt+1 + γ max_a Q(S_t+1, a; θt). where θ=θ- because we update target params to train params every t steps
-    Q_next = q_target(s_prime/255.0).max(1)[0].unsqueeze(1)
-    # print(f"q targ: {q_target(s_prime)}")
+    Q_next = q_target(s_prime / 255.0).max(1)[0].unsqueeze(1)
     y_i = r + done_mask * gamma * Q_next
-
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-    Q = q(s/255.0)[torch.arange(len(a)), a.to(torch.long).flatten()]  # q(s).gather(1,a)
-    # print(f"Q-value estimate: {q(s)}\n")
-    # print(f"Q_next: {Q_next}")
-    # print(f"target: {y_i}")
-    # print(f"TD Error: {(y_i - Q)**2}")
+    Q = q(s / 255.0)[
+        torch.arange(len(a)), a.to(torch.long).flatten()
+    ]  # q(s).gather(1,a)
     y_i = y_i.squeeze()
     assert Q.shape == y_i.shape, f"{Q.shape}, {y_i.shape}"
-
     loss = F.smooth_l1_loss(Q, y_i)
-
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-
     return Q.mean()
 
 
 # Convert image to greyscale, resize and normalise pixels
-def preprocess(image):
+def preprocess(image, history):
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     image = np.expand_dims(image, axis=2)
+    # stack images
+    history.popleft()
+    history.append(image)
+    image = np.concatenate(list(history),axis=1)
     return image
 
 
@@ -161,12 +157,21 @@ def main():
         fieldnames = ["step", "score", "Q-value"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
-
+        
+        fg = plt.figure()
+        ax = fg.gca()
         for n_epi in range(500):
             observation, info = env.reset()
 
             # preprocess
-            observation = preprocess(observation["image"])
+            img1 = np.zeros((40,40,1)).astype(np.uint8)
+            img2 = np.zeros((40,40,1)).astype(np.uint8)
+            img3 = np.zeros((40,40,1)).astype(np.uint8)
+            img4 = np.zeros((40,40,1)).astype(np.uint8)
+            history = deque([img1, img2, img3, img4])
+            observation = preprocess(observation["image"], history)
+            
+            h = ax.imshow(observation, cmap='gray')
 
             terminated = False
             truncated = False
@@ -185,9 +190,13 @@ def main():
                 # img.save(f"frames/frame_{step:04d}.png")
 
                 done_mask = 0.0 if terminated else 1.0
-                observation_prime = preprocess(observation_prime["image"])
-                memory.put((observation, action, reward, observation_prime, done_mask))
+                observation_prime = preprocess(observation_prime["image"], history)
 
+                # render image
+                # h.set_data(observation_prime)
+                # plt.draw(), plt.pause(1e-3)
+
+                memory.put((observation, action, reward, observation_prime, done_mask))
                 observation = observation_prime
 
                 if step > train_start and step % train_update_interval == 0:
