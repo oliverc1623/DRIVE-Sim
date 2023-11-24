@@ -8,10 +8,8 @@ import sys, os
 import csv
 import cv2
 import matplotlib.pyplot as plt
-from IPython import display
 from PIL import Image
 from collections import deque
-import time
 
 import torch
 import torch.nn as nn
@@ -54,15 +52,13 @@ class ReplayBuffer:
         return (
             torch.tensor(np.array(s_lst), dtype=torch.int)
             .permute(0, 3, 1, 2)
-            .to(self.device)
-            / 255.0,
-            torch.tensor(a_lst, dtype=torch.int).to(self.device),
-            torch.tensor(np.array(r_lst), dtype=torch.int).to(self.device),
+            .to(self.device),
+            torch.tensor(a_lst, dtype=torch.float32).to(self.device),
+            torch.tensor(np.array(r_lst), dtype=torch.float32).to(self.device),
             torch.tensor(np.array(s_prime_lst), dtype=torch.int)
             .permute(0, 3, 1, 2)
-            .to(self.device)
-            / 255.0,
-            torch.tensor(np.array(done_mask_lst), dtype=torch.int).to(self.device),
+            .to(self.device),
+            torch.tensor(np.array(done_mask_lst), dtype=torch.float32).to(self.device),
         )
 
     def size(self):
@@ -79,7 +75,6 @@ class Qnet(nn.Module):
         self.mlp2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
-        x = x.to(torch.float32)
         x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
@@ -102,12 +97,12 @@ def train(q, q_target, memory, optimizer):
     s, a, r, s_prime, done_mask = memory.sample(batch_size)
 
     # Rt+1 + γ max_a Q(S_t+1, a; θt). where θ=θ- because we update target params to train params every t steps
-    Q_next = q_target(s_prime).max(1)[0].unsqueeze(1)
+    Q_next = q_target(s_prime/255.0).max(1)[0].unsqueeze(1)
     # print(f"q targ: {q_target(s_prime)}")
     y_i = r + done_mask * gamma * Q_next
 
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-    Q = q(s)[torch.arange(len(a)), a.to(torch.long).flatten()]  # q(s).gather(1,a)
+    Q = q(s/255.0)[torch.arange(len(a)), a.to(torch.long).flatten()]  # q(s).gather(1,a)
     # print(f"Q-value estimate: {q(s)}\n")
     # print(f"Q_next: {Q_next}")
     # print(f"target: {y_i}")
@@ -167,15 +162,11 @@ def main():
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
 
-        fg = plt.figure()
-        ax = fg.gca()
-
         for n_epi in range(500):
             observation, info = env.reset()
 
             # preprocess
             observation = preprocess(observation["image"])
-            h = ax.imshow(observation)
 
             terminated = False
             truncated = False
@@ -188,8 +179,6 @@ def main():
                     action
                 )
 
-                h.set_data(observation_prime["image"])
-                plt.draw(), plt.pause(1e-3)
                 # uncomment block to download frames as PNGs
                 # img = Image.fromarray((observation_prime['image']).astype(np.uint8))
                 # img = img.resize((128,128), resample=Image.BOX)
