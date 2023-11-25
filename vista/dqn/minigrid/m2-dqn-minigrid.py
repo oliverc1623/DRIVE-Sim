@@ -53,7 +53,7 @@ class ReplayBuffer:
             torch.tensor(np.array(s_lst), dtype=torch.int)
             .permute(0, 3, 1, 2)
             .to(self.device),
-            torch.tensor(a_lst, dtype=torch.float32).to(self.device),
+            torch.tensor(a_lst, dtype=torch.int64).to(self.device),
             torch.tensor(np.array(r_lst), dtype=torch.float32).to(self.device),
             torch.tensor(np.array(s_prime_lst), dtype=torch.int)
             .permute(0, 3, 1, 2)
@@ -95,14 +95,15 @@ class Qnet(nn.Module):
 
 def train(q, q_target, memory, optimizer):
     s, a, r, s_prime, done_mask = memory.sample(batch_size)
+
+    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+    Q = q(s / 255.0).gather(1, a)
+
     # Rt+1 + γ max_a Q(S_t+1, a; θt). where θ=θ- because we update target params to train params every t steps
     Q_next = q_target(s_prime / 255.0).max(1)[0].unsqueeze(1)
     y_i = r + done_mask * gamma * Q_next
-    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
-    Q = q(s / 255.0)[
-        torch.arange(len(a)), a.to(torch.long).flatten()
-    ]  # q(s).gather(1,a)
-    y_i = y_i.squeeze()
+
+    # y_i = y_i.squeeze()
     assert Q.shape == y_i.shape, f"{Q.shape}, {y_i.shape}"
     loss = F.smooth_l1_loss(Q, y_i)
     optimizer.zero_grad()
@@ -152,7 +153,7 @@ def main():
     q_value = torch.tensor(0)
 
     with open(
-        f"../data/minigrid/Uniform-DQN-Minigrid{sys.argv[1]}.csv", "w", newline=""
+        f"../data/minigrid/Uniform-DDQN-Minigrid{sys.argv[1]}.csv", "w", newline=""
     ) as csvfile:
         fieldnames = ["step", "score", "Q-value"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
@@ -183,14 +184,13 @@ def main():
                 observation_prime, reward, terminated, truncated, info = env.step(
                     action
                 )
-
-                # uncomment block to download frames as PNGs
-                # img = Image.fromarray((observation_prime['image']).astype(np.uint8))
-                # img = img.resize((128,128), resample=Image.BOX)
-                # img.save(f"frames/frame_{step:04d}.png")
-
                 done_mask = 0.0 if terminated else 1.0
                 observation_prime = preprocess(observation_prime["image"], history)
+
+                # uncomment block to download frames as PNGs
+                # img = Image.fromarray((np.squeeze(observation_prime)).astype(np.uint8), 'L')
+                # img = img.resize((480,120), resample=Image.BOX)
+                # img.save(f"frames/frame_{step:04d}.png")
 
                 # render image
                 # h.set_data(observation_prime)
