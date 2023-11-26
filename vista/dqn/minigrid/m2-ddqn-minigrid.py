@@ -88,7 +88,7 @@ class Qnet(nn.Module):
         out = self.forward(obs)
         coin = random.random()
         if coin < epsilon:
-            return random.randint(0, 2)
+            return random.randint(0, 5)
         else:
             return out.argmax().item()
 
@@ -138,8 +138,8 @@ def main():
     random.seed(seed)
     torch.manual_seed(seed)
 
-    q = Qnet(1, 3)
-    q_target = Qnet(1, 3)
+    q = Qnet(1, 6)
+    q_target = Qnet(1, 6)
     q_target.load_state_dict(q.state_dict())
     q.to(device)
     q_target.to(device)
@@ -164,7 +164,7 @@ def main():
         
         fg = plt.figure()
         ax = fg.gca()
-        for n_epi in range(500):
+        for n_epi in range(600):
             observation, info = env.reset()
 
             # preprocess
