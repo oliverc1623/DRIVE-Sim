@@ -76,6 +76,13 @@ Remember that if you're running this on a server or headless environment, you mi
 export DISPLAY=:1
 ```
 
+## How to setup a kernel for Notebooks
+```
+source activate [myenv]
+pip install ipykernel
+python -m ipykernel install --user --name myenv --display-name "Python (myenv)"
+```
+
 9. Open Jupyter notebook
 
 Make sure to set your display environment:
