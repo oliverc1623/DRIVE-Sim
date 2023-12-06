@@ -85,6 +85,7 @@ python -m ipykernel install --user --name myenv --display-name "Python (myenv)"
 
 9. Open Jupyter notebook
 
+Select your newly made ipykernel from the previous step.
 Make sure to set your display environment:
 ```
 import os
