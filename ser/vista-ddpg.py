@@ -5,6 +5,7 @@ import sys
 # local imports
 sys.path.append('../vista')
 from VistaEnv import VistaEnv
+import copy
 
 import gymnasium as gym
 import random
@@ -44,10 +45,10 @@ class ReplayBuffer():
             done_mask = 0.0 if done else 1.0 
             done_mask_lst.append([done_mask])
         
-        return  torch.tensor(np.array(s_lst), dtype=torch.float, device=self.device), \
+        return  torch.tensor(s_lst), \
                 torch.tensor(np.array(a_lst), dtype=torch.float, device=self.device), \
                 torch.tensor(np.array(r_lst), dtype=torch.float, device=self.device), \
-                torch.tensor(np.array(s_prime_lst), dtype=torch.float, device=self.device), \
+                (torch.tensor(np.array(s_prime_lst), dtype=torch.float).permute(0,3,1,2).to(self.device))/ 255.0, \
                 torch.tensor(np.array(done_mask_lst), dtype=torch.float, device=self.device)
     
     def size(self):
@@ -56,14 +57,21 @@ class ReplayBuffer():
 class MuNet(nn.Module):
     def __init__(self):
         super(MuNet, self).__init__()
-        self.fc1 = nn.Linear(3, 128)
-        self.fc2 = nn.Linear(128, 64)
+        self.conv1 = nn.Conv2d(3, 32, 3)
+        self.conv2 = nn.Conv2d(32, 64, 3)
+        self.conv3 = nn.Conv2d(64, 64, 3)
+        self.fc1 = nn.Linear(1634304, 64)
+        self.fc2 = nn.Linear(64, 64)
         self.fc_mu = nn.Linear(64, 1)
 
     def forward(self, x):
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = F.relu(self.conv3(x))
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        mu = torch.tanh(self.fc_mu(x))*2 # Multipled by 2 because the action space of the Pendulum-v0 is [-2,2]
+        x = F.relu(self.fc2(x))        
+        mu = torch.tanh(self.fc_mu(x))
         return mu
 
 class QNet(nn.Module):
@@ -125,11 +133,13 @@ def main():
         steering_ratio=14.7,
         lookahead_road=True,
     )
-    camera_config = {'type': 'camera',
-                     'name': 'camera_front',
-                     'rig_path': './RIG.xml',
-                     'optical_flow_root': '../data_prep/Super-SloMo/slowmo',
-                     'size': (400, 640)}
+    camera_config = {
+        'type': 'camera',
+        'name': 'camera_front',
+        'rig_path': './RIG.xml',
+        'optical_flow_root': '../data_prep/Super-SloMo/slowmo',
+        'size': (400, 640)
+    }
     ego_car_config = copy.deepcopy(car_config)
     ego_car_config['lookahead_road'] = True
     trace_root = "../vista/vista_traces"
@@ -141,10 +151,12 @@ def main():
     ]
     trace_paths = [os.path.join(trace_root, p) for p in trace_path]
     display_config = dict(road_buffer_size=1000, )
-    preprocess_config = {"crop_roi": True,
-                 "resize": False,
-                 "grayscale": False,
-                 "binary": False}
+    preprocess_config = {
+        "crop_roi": True,
+        "resize": False,
+        "grayscale": False,
+        "binary": False
+    }
     env = VistaEnv(
         trace_paths = trace_paths, 
         trace_config = trace_config,
@@ -162,7 +174,7 @@ def main():
     mu_target.load_state_dict(mu.state_dict())
 
     score = 0.0
-    print_interval = 20
+    print_interval = 1
 
     mu_optimizer = optim.Adam(mu.parameters(), lr=lr_mu)
     q_optimizer  = optim.Adam(q.parameters(), lr=lr_q)
@@ -173,8 +185,9 @@ def main():
         done = False
 
         count = 0
-        while count < 200 and not done:
-            a = mu(torch.from_numpy(s).float().to(device))
+        while count < 500 and not done:
+            s = (torch.tensor(s).permute(0,3,1,2) / 255.0).to(device)
+            a = mu(s)
             a = a.item() + ou_noise()[0]
             s_prime, r, done, truncated, info = env.step([a])
             memory.put((s,a,r/100.0,s_prime,done))
@@ -182,7 +195,8 @@ def main():
             s = s_prime
             count += 1
 
-        if memory.size()>2000:
+        print(f"memory size: {memory.size()}")
+        if memory.size()>100:
             for i in range(10):
                 train(mu, mu_target, q, q_target, memory, q_optimizer, mu_optimizer)
                 soft_update(mu, mu_target)
