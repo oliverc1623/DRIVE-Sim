@@ -116,8 +116,9 @@ def train(q, q_target, memory, optimizer):
 
 # Convert image to greyscale, resize and normalise pixels
 def preprocess(image, history):
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image = np.expand_dims(image, axis=2)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # uncomment if using gray scale
+    # image = np.expand_dims(image, axis=2) 
     # stack images
     history.popleft()
     history.append(image)
@@ -137,8 +138,8 @@ def main():
     random.seed(seed)
     torch.manual_seed(seed)
 
-    q = Qnet(1, 6)
-    q_target = Qnet(1, 6)
+    q = Qnet(3, 6)
+    q_target = Qnet(3, 6)
     q_target.load_state_dict(q.state_dict())
     q.to(device)
     q_target.to(device)
@@ -168,10 +169,10 @@ def main():
             observation, info = env.reset()
 
             # preprocess
-            img1 = np.zeros((40, 40, 1)).astype(np.uint8)
-            img2 = np.zeros((40, 40, 1)).astype(np.uint8)
-            img3 = np.zeros((40, 40, 1)).astype(np.uint8)
-            img4 = np.zeros((40, 40, 1)).astype(np.uint8)
+            img1 = np.zeros((40, 40, 3)).astype(np.uint8)
+            img2 = np.zeros((40, 40, 3)).astype(np.uint8)
+            img3 = np.zeros((40, 40, 3)).astype(np.uint8)
+            img4 = np.zeros((40, 40, 3)).astype(np.uint8)
             history = deque([img1, img2, img3, img4])
             observation = preprocess(observation["image"], history)
 
@@ -191,9 +192,9 @@ def main():
                 observation_prime = preprocess(observation_prime["image"], history)
 
                 # uncomment block to download frames as PNGs
-                # img = Image.fromarray((np.squeeze(observation_prime)).astype(np.uint8), 'L')
-                # img = img.resize((480,120), resample=Image.BOX)
-                # img.save(f"frames/frame_{step:04d}.png")
+                img = Image.fromarray((np.squeeze(observation_prime)).astype(np.uint8), 'RGB')
+                img = img.resize((480,120), resample=Image.BOX)
+                img.save(f"frames/frame_{step:04d}.png")
 
                 # render image
                 # h.set_data(observation_prime)
@@ -226,7 +227,7 @@ def main():
                 )
                 if score > prev_score:
                     prev_score = score
-                    torch.save(q.state_dict(), 'q_model.pth')
+                    torch.save(q.state_dict(), 'q-model-rgb.pth')
                 csvfile.flush()
                 score = 0.0
 
