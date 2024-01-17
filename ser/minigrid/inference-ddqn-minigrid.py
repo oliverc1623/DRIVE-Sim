@@ -67,14 +67,17 @@ class ReplayBuffer:
 class Qnet(nn.Module):
     def __init__(self, n_input_channels, n_actions):
         super(Qnet, self).__init__()
-        self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.mlp1 = nn.Linear(1024, 512)
+        self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=2)
+        self.batchnorm = nn.BatchNorm2d(32)
+        self.maxpool1 = nn.MaxPool2d(2)
+        self.mlp1 = nn.Linear(4160, 512)
         self.mlp2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = self.batchnorm(self.conv1(x))
+        x = self.maxpool1(F.relu(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = torch.flatten(x, 1)  # flatten all dimensions except batch
@@ -116,8 +119,9 @@ def train(q, q_target, memory, optimizer):
 
 # Convert image to greyscale, resize and normalise pixels
 def preprocess(image, history):
-    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    image = np.expand_dims(image, axis=2)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    # uncomment if using gray scale
+    # image = np.expand_dims(image, axis=2) 
     # stack images
     history.popleft()
     history.append(image)
@@ -137,8 +141,8 @@ def main():
     random.seed(seed)
     torch.manual_seed(seed)
 
-    q = Qnet(1, 6).to(device)
-    q.load_state_dict(torch.load('q_model.pth'))
+    q = Qnet(3, 6).to(device)
+    q.load_state_dict(torch.load('q-model-rgb-maxpool.pth'))
     q.eval()
     memory = ReplayBuffer(device)
 
@@ -164,10 +168,10 @@ def main():
             observation, info = env.reset()
 
             # preprocess
-            img1 = np.zeros((40, 40, 1)).astype(np.uint8)
-            img2 = np.zeros((40, 40, 1)).astype(np.uint8)
-            img3 = np.zeros((40, 40, 1)).astype(np.uint8)
-            img4 = np.zeros((40, 40, 1)).astype(np.uint8)
+            img1 = np.zeros((40, 40, 3)).astype(np.uint8)
+            img2 = np.zeros((40, 40, 3)).astype(np.uint8)
+            img3 = np.zeros((40, 40, 3)).astype(np.uint8)
+            img4 = np.zeros((40, 40, 3)).astype(np.uint8)
             history = deque([img1, img2, img3, img4])
             observation = preprocess(observation["image"], history)
 

@@ -67,14 +67,18 @@ class ReplayBuffer:
 class Qnet(nn.Module):
     def __init__(self, n_input_channels, n_actions):
         super(Qnet, self).__init__()
-        self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=0)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0)
-        self.mlp1 = nn.Linear(1024, 512)
+        self.conv1 = nn.Conv2d(n_input_channels, 32, kernel_size=8, stride=4, padding=2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=2)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=2)
+        self.batchnorm = nn.BatchNorm2d(32)
+        self.maxpool1 = nn.MaxPool2d(2)
+        self.mlp1 = nn.Linear(4160, 512)
         self.mlp2 = nn.Linear(512, n_actions)
 
     def forward(self, x):
-        x = F.relu(self.conv1(x))
+        x = self.batchnorm(self.conv1(x))
+        x = self.maxpool1(F.relu(x))
+        # x = F.relu(self.conv1(x))
         x = F.relu(self.conv2(x))
         x = F.relu(self.conv3(x))
         x = torch.flatten(x, 1)  # flatten all dimensions except batch
@@ -165,7 +169,7 @@ def main():
 
         fg = plt.figure()
         ax = fg.gca()
-        for n_epi in range(600):
+        for n_epi in range(1_000):
             observation, info = env.reset()
 
             # preprocess
@@ -192,9 +196,9 @@ def main():
                 observation_prime = preprocess(observation_prime["image"], history)
 
                 # uncomment block to download frames as PNGs
-                img = Image.fromarray((np.squeeze(observation_prime)).astype(np.uint8), 'RGB')
-                img = img.resize((480,120), resample=Image.BOX)
-                img.save(f"frames/frame_{step:04d}.png")
+                # img = Image.fromarray((np.squeeze(observation_prime)).astype(np.uint8), 'RGB')
+                # img = img.resize((480,120), resample=Image.BOX)
+                # img.save(f"frames/frame_{step:04d}.png")
 
                 # render image
                 # h.set_data(observation_prime)
@@ -227,7 +231,7 @@ def main():
                 )
                 if score > prev_score:
                     prev_score = score
-                    torch.save(q.state_dict(), 'q-model-rgb.pth')
+                    torch.save(q.state_dict(), 'q-model-rgb-maxpool.pth')
                 csvfile.flush()
                 score = 0.0
 
