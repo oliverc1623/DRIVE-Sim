@@ -120,9 +120,7 @@ def train(q, q_target, memory, optimizer):
 # Convert image to greyscale, resize and normalise pixels
 def preprocess(image, history):
     image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-    # uncomment if using gray scale
-    # image = np.expand_dims(image, axis=2) 
-    # stack images
+    image = cv2.resize(image, (40, 40))
     history.popleft()
     history.append(image)
     image = np.concatenate(list(history), axis=1)
@@ -130,7 +128,7 @@ def preprocess(image, history):
 
 
 def main():
-    env = gym.make("MiniGrid-Empty-5x5-v0", render_mode="rgb_array")
+    env = gym.make("MiniGrid-Empty-8x8-v0", render_mode="rgb_array")
     env = RGBImgObsWrapper(env)  # Get pixel observations
 
     # set seed for reproducibility
@@ -156,7 +154,7 @@ def main():
     step = 0
 
     with open(
-        f"logs/inference-uniform-DDQN-Minigrid{sys.argv[1]}.csv", "w", newline=""
+        f"logs/inference-uniform-DDQN-Minigrid-6x6{sys.argv[1]}.csv", "w", newline=""
     ) as csvfile:
         fieldnames = ["step", "score", "Q-value"]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
