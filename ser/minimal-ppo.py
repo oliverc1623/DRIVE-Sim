@@ -119,6 +119,10 @@ class PPO(nn.Module):
             loss.mean().backward()
             self.optimizer.step()
 
+    def preprocess(self, x):
+        # todo: 
+        pass
+
 
 def main():
     env = gym.make("MiniGrid-Empty-5x5-v0", render_mode="rgb_array")
