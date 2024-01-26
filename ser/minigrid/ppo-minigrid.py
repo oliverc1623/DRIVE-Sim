@@ -9,6 +9,7 @@ from torch.distributions import Categorical
 import numpy as np
 import csv
 import io
+import matplotlib.pyplot as plt
 
 
 # Hyperparameters
@@ -143,10 +144,13 @@ def main():
     fieldnames = ["episode", "score"]
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
+    frame_count = 0
 
     for n_epi in range(500):
         s, _ = env.reset()
         s = s["image"]
+        plt.imsave(f"frames/frame_{frame_count:05}.png", s)
+        frame_count += 1
         s = model.preprocess(s)
         done = False
         truncated = False
@@ -156,8 +160,9 @@ def main():
                 m = Categorical(prob[0])
                 a = m.sample().item()
                 s_prime, r, done, truncated, info = env.step(a)
+                plt.imsave(f"frames/frame_{frame_count:05}.png", s_prime["image"])
+                frame_count += 1
                 s_prime = model.preprocess(s_prime["image"])
-
                 model.put_data((s, a, r, s_prime, prob[0][a].item(), done))
                 s = s_prime
 
