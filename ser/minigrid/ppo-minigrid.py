@@ -70,10 +70,10 @@ class PPO(nn.Module):
             done_lst.append([done_mask])
 
         s, a, r, s_prime, done_mask, prob_a = (
-            torch.tensor(np.array(s_lst), dtype=torch.float, device=device),
+            torch.stack(s_lst, 0).squeeze(1),
             torch.tensor(np.array(a_lst), device=device),
             torch.tensor(np.array(r_lst), device=device),
-            torch.tensor(np.array(s_prime_lst), dtype=torch.float, device=device),
+            torch.stack(s_prime_lst, 0).squeeze(1),
             torch.tensor(np.array(done_lst), dtype=torch.float, device=device),
             torch.tensor(np.array(prob_a_lst), device=device),
         )
@@ -82,12 +82,12 @@ class PPO(nn.Module):
 
     def train_net(self):
         s, a, r, s_prime, done_mask, prob_a = self.make_batch()
-        print(f"s: {s.shape}")
-        print(f"a: {a.shape}")
-        print(f"r: {r.shape}")
-        print(f"s_prime: {s_prime.shape}")
-        print(f"done: {done_mask.shape}")
-        print(f"prob_a: {prob_a.shape}\n")
+        # print(f"s: {s.shape}")
+        # print(f"a: {a.shape}")
+        # print(f"r: {r.shape}")
+        # print(f"s_prime: {s_prime.shape}")
+        # print(f"done: {done_mask.shape}")
+        # print(f"prob_a: {prob_a.shape}\n")
 
         for i in range(K_epoch):
             td_target = r + gamma * self.v(s_prime) * done_mask
@@ -119,30 +119,29 @@ class PPO(nn.Module):
             self.optimizer.step()
 
     def preprocess(self, x):
-        print(f"preprocess shape: {x.shape}")
         x = torch.from_numpy(x).float() / 255.0
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)
         else:
             x = x.permute(0, 3, 1, 2).to(device)
-        print(f"postprocess shape: {x.shape}")
         return x
 
 
 def main():
+    # initialize env
     env = gym.make("MiniGrid-Empty-5x5-v0", render_mode="rgb_array")
     env = RGBImgObsWrapper(env)  # Get pixel observations
     model = PPO().to(device)
     score = 0.0
+
+    # initialize logger
     print_interval = 1
-    # Create an in-memory string buffer
     output = io.StringIO()
-    # Use the string buffer instead of a file
     fieldnames = ["episode", "score"]
     writer = csv.DictWriter(output, fieldnames=fieldnames)
     writer.writeheader()
 
-    for n_epi in range(4):
+    for n_epi in range(500):
         s, _ = env.reset()
         s = s["image"]
         s = model.preprocess(s)
