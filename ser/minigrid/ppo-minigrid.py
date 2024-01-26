@@ -88,12 +88,6 @@ class PPO(nn.Module):
 
     def train_net(self):
         s, a, r, s_prime, done_mask, prob_a = self.make_batch()
-        # print(f"s: {s.shape}")
-        # print(f"a: {a.shape}")
-        # print(f"r: {r.shape}")
-        # print(f"s_prime: {s_prime.shape}")
-        # print(f"done: {done_mask.shape}")
-        # print(f"prob_a: {prob_a.shape}\n")
 
         for i in range(K_epoch):
             td_target = r + gamma * self.v(s_prime) * done_mask
@@ -139,6 +133,7 @@ def main():
     env = RGBImgObsWrapper(env)  # Get pixel observations
     model = PPO().to(device)
     score = 0.0
+    max_score = 0.0
 
     # initialize logger
     print_interval = 1
@@ -151,8 +146,8 @@ def main():
     for n_epi in range(500):
         s, _ = env.reset()
         s = s["image"]
-        plt.imsave(f"frames/frame_{frame_count:05}.png", s)
-        frame_count += 1
+        # plt.imsave(f"frames/frame_{frame_count:05}.png", s)
+        # frame_count += 1
         s = model.preprocess(s)
         done = False
         truncated = False
@@ -160,11 +155,10 @@ def main():
             for t in range(T_horizon):
                 prob = model.pi(s, -1)
                 m = Categorical(prob[0])
-                print(prob[0])
                 a = m.sample().item()
                 s_prime, r, done, truncated, info = env.step(a)
-                plt.imsave(f"frames/frame_{frame_count:05}.png", s_prime["image"])
-                frame_count += 1
+                # plt.imsave(f"frames/frame_{frame_count:05}.png", s_prime["image"])
+                # frame_count += 1
                 s_prime = model.preprocess(s_prime["image"])
                 model.put_data((s, a, r, s_prime, prob[0][a].item(), done))
                 s = s_prime
@@ -182,6 +176,9 @@ def main():
             with open('introspectiveEnv-log1.csv', 'w', newline='') as csvfile:
                 csvfile.write(csv_content)
                 csvfile.flush()
+            if score > max_score:
+                torch.save(model.state_dict(), 'ppo-baseline.pth')
+                max_score = score
             score = 0.0
 
     env.close()
