@@ -1,6 +1,7 @@
 import gymnasium as gym
 import minigrid
 from minigrid.wrappers import ImgObsWrapper, RGBImgPartialObsWrapper, RGBImgObsWrapper
+from minigrid.minigrid_env import MiniGridEnv
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +11,7 @@ import numpy as np
 import csv
 import io
 import matplotlib.pyplot as plt
+from IntrospectiveEnv import IntrospectiveEnv
 
 
 # Hyperparameters
@@ -31,8 +33,8 @@ class PPO(nn.Module):
         self.conv2 = nn.Conv2d(16, 32, 2)
         self.conv3 = nn.Conv2d(32, 64, 2)
         self.maxpool = nn.MaxPool2d(2)
-        self.fc1 = nn.Linear(18496, 512)
-        self.fc_pi = nn.Linear(512, 6)
+        self.fc1 = nn.Linear(69696, 512)
+        self.fc_pi = nn.Linear(512, 7)
         self.fc_v = nn.Linear(512, 1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
@@ -133,7 +135,7 @@ class PPO(nn.Module):
 
 def main():
     # initialize env
-    env = gym.make("MiniGrid-Empty-5x5-v0", render_mode="rgb_array")
+    env = IntrospectiveEnv(render_mode="rgb_array")
     env = RGBImgObsWrapper(env)  # Get pixel observations
     model = PPO().to(device)
     score = 0.0
@@ -158,6 +160,7 @@ def main():
             for t in range(T_horizon):
                 prob = model.pi(s, -1)
                 m = Categorical(prob[0])
+                print(prob[0])
                 a = m.sample().item()
                 s_prime, r, done, truncated, info = env.step(a)
                 plt.imsave(f"frames/frame_{frame_count:05}.png", s_prime["image"])
@@ -176,7 +179,7 @@ def main():
             print("# of episode :{}, avg score : {:.2f}".format(n_epi, score / print_interval))
             writer.writerow({"episode": n_epi, "score": score / print_interval})
             csv_content = output.getvalue()
-            with open('episode_scores1.csv', 'w', newline='') as csvfile:
+            with open('introspectiveEnv-log1.csv', 'w', newline='') as csvfile:
                 csvfile.write(csv_content)
                 csvfile.flush()
             score = 0.0
