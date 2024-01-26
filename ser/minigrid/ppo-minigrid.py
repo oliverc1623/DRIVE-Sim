@@ -16,7 +16,7 @@ learning_rate = 0.0005
 gamma = 0.99
 lmbda = 0.95
 eps_clip = 0.2
-K_epoch = 3
+K_epoch = 4
 T_horizon = 128
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
@@ -26,30 +26,33 @@ class PPO(nn.Module):
     def __init__(self):
         super(PPO, self).__init__()
         self.data = []
-        self.conv1 = nn.Conv2d(3, 32, 2)
-        self.conv2 = nn.Conv2d(32, 64, 2)
-        self.conv3 = nn.Conv2d(64, 64, 2)
-        self.fc1 = nn.Linear(87616, 512)
+        self.conv1 = nn.Conv2d(3, 16, 2)
+        self.conv2 = nn.Conv2d(16, 32, 2)
+        self.conv3 = nn.Conv2d(32, 64, 2)
+        self.maxpool = nn.MaxPool2d(2)
+        self.fc1 = nn.Linear(18496, 512)
         self.fc_pi = nn.Linear(512, 6)
         self.fc_v = nn.Linear(512, 1)
         self.optimizer = optim.Adam(self.parameters(), lr=learning_rate)
 
     def pi(self, x, softmax_dim=0):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        x = F.silu(self.conv1(x))
+        x = self.maxpool(x)
+        x = F.silu(self.conv2(x))
+        x = F.silu(self.conv3(x))
         x = torch.flatten(x, 1)  # flatten all dimensions except batch
-        x = F.relu(self.fc1(x))
+        x = F.silu(self.fc1(x))
         x = self.fc_pi(x)
         prob = F.softmax(x, dim=softmax_dim)
         return prob
 
     def v(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
+        x = F.silu(self.conv1(x))
+        x = self.maxpool(x)
+        x = F.silu(self.conv2(x))
+        x = F.silu(self.conv3(x))
         x = torch.flatten(x, 1)  # flatten all dimensions except batch
-        x = F.relu(self.fc1(x))
+        x = F.silu(self.fc1(x))
         v = self.fc_v(x)
         return v
 
@@ -102,7 +105,7 @@ class PPO(nn.Module):
             advantage_lst.reverse()
             advantage = torch.tensor(advantage_lst, dtype=torch.float, device=device)
 
-            pi = self.pi(s, softmax_dim=0)
+            pi = self.pi(s, softmax_dim=-1)
             pi_a = pi.gather(1, a)
             ratio = torch.exp(
                 torch.log(pi_a) - torch.log(prob_a)
@@ -161,7 +164,6 @@ def main():
                 score += r
                 if done or truncated:
                     break
-
             model.train_net()
 
         if n_epi % print_interval == 0 and n_epi != 0:
@@ -169,8 +171,9 @@ def main():
             print("# of episode :{}, avg score : {:.2f}".format(n_epi, score / print_interval))
             writer.writerow({"episode": n_epi, "score": score / print_interval})
             csv_content = output.getvalue()
-            with open('episode_scores.csv', 'w', newline='') as csvfile:
+            with open('episode_scores1.csv', 'w', newline='') as csvfile:
                 csvfile.write(csv_content)
+                csvfile.flush()
             score = 0.0
 
     env.close()
