@@ -149,7 +149,7 @@ def main():
         truncated = False
         while not done and not truncated:
             for t in range(T_horizon):
-                prob = model.pi(s)
+                prob = model.pi(s, -1)
                 m = Categorical(prob[0])
                 a = m.sample().item()
                 s_prime, r, done, truncated, info = env.step(a)
