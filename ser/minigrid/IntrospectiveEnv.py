@@ -1,3 +1,12 @@
+import minigrid
+from minigrid.wrappers import ImgObsWrapper, RGBImgPartialObsWrapper, RGBImgObsWrapper
+from minigrid.core.constants import COLOR_NAMES
+from minigrid.core.grid import Grid
+from minigrid.core.mission import MissionSpace
+from minigrid.core.world_object import Door, Goal, Key, Wall
+from minigrid.manual_control import ManualControl
+from minigrid.minigrid_env import MiniGridEnv
+
 class SimpleEnv(MiniGridEnv):
     def __init__(
         self,
