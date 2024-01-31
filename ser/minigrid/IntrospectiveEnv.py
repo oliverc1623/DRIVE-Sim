@@ -6,6 +6,7 @@ from minigrid.core.mission import MissionSpace
 from minigrid.core.world_object import Door, Goal, Key, Wall
 from minigrid.manual_control import ManualControl
 from minigrid.minigrid_env import MiniGridEnv
+import numpy as np
 
 class IntrospectiveEnv(MiniGridEnv):
     def __init__(
