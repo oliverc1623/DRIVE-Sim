@@ -7,7 +7,7 @@ from minigrid.core.world_object import Door, Goal, Key, Wall
 from minigrid.manual_control import ManualControl
 from minigrid.minigrid_env import MiniGridEnv
 
-class SimpleEnv(MiniGridEnv):
+class IntrospectiveEnv(MiniGridEnv):
     def __init__(
         self,
         size=9,
@@ -35,7 +35,7 @@ class SimpleEnv(MiniGridEnv):
 
     @staticmethod
     def _gen_mission():
-        return "grand mission"
+        return "get to the green goal square"
 
     def _gen_grid(self, width, height):
         # Create an empty grid
@@ -67,4 +67,4 @@ class SimpleEnv(MiniGridEnv):
         else:
             self.place_agent()
 
-        self.mission = "grand mission"
+        self.mission = "get to the green goal square"
