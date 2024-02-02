@@ -141,7 +141,6 @@ class IntrospectiveEnvLocked(MiniGridEnv):
             agent_width = np.random.randint(1, width-1)
             agent_width = agent_width + 1 if agent_width == 4 else agent_width
             agent_height = np.random.randint(1, height//2)
-        print(f"agent_width: {agent_height}, agent_height: {agent_height}")
         self.agent_pos = (agent_width, agent_height)
         self.agent_dir = np.random.randint(0, 4)
 
