@@ -11,7 +11,7 @@ import minigrid
 from minigrid.wrappers import ImgObsWrapper, RGBImgPartialObsWrapper, RGBImgObsWrapper
 from IntrospectiveEnv import IntrospectiveEnv, IntrospectiveEnvLocked
 
-from PPO import PPO
+from PPO_Introspective import PPOIntrospective
 from introspective import introspect
 
 ################################### Training ###################################
@@ -146,10 +146,10 @@ def train():
     ################# training procedure ################
 
     # initialize a PPO agent
-    student_ppo_agent = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
-    teacher_ppo_agent = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
-    teacher_ppo_agent.old_policy.load_state_dict(torch.load("PPO_preTrained/PPO_teacher.pth"))
-    teacher_ppo_agent.old_policy.eval()
+    student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
+    teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
+    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/PPO_teacher.pth", map_location="cpu"))
+    teacher_ppo_agent.policy_old.eval()
 
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -181,7 +181,7 @@ def train():
         for t in range(1, max_ep_len+1):
 
             # select action with policy
-            h = introspect(state, teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t)
+            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t)
             action = ppo_agent.select_action(state)
             state, reward, done, truncated, info = env.step(action)
             state = state["image"]
@@ -262,10 +262,3 @@ def train():
 if __name__ == '__main__':
 
     train()
-    
-    
-    
-    
-    
-    
-    
