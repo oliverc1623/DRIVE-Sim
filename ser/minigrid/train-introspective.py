@@ -200,7 +200,7 @@ def train():
             # update PPO agent
             if time_step % update_timestep == 0:
                 student_ppo_agent.update()
-                teacher_ppo_agent.update_critic()
+                # teacher_ppo_agent.update_critic()
 
             # if continuous action space; then decay action std of ouput action distribution
             if has_continuous_action_space and time_step % action_std_decay_freq == 0:
