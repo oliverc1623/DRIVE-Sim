@@ -11,6 +11,9 @@ if(torch.cuda.is_available()):
     device = torch.device('cuda:0') 
     torch.cuda.empty_cache()
     print("Device set to : " + str(torch.cuda.get_device_name(device)))
+elif(torch.backends.mps.is_available()):
+    device = torch.device("mps")
+    print("Device set to : " + str(device))
 else:
     print("Device set to : cpu")
 print("============================================================================================")
@@ -25,6 +28,7 @@ class RolloutBuffer:
         self.rewards = []
         self.state_values = []
         self.is_terminals = []
+        self.indicators = []
     
     def clear(self):
         del self.actions[:]
@@ -33,6 +37,7 @@ class RolloutBuffer:
         del self.rewards[:]
         del self.state_values[:]
         del self.is_terminals[:]
+        del self.indicators[:]
 
 
 class ActorCritic(nn.Module):
@@ -129,7 +134,7 @@ class ActorCritic(nn.Module):
             if self.action_dim == 1:
                 action = action.reshape(-1, self.action_dim)
         else:
-            action_probs = self.actor(state)
+            action_probs = self.actor(state)[0]
             dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
@@ -282,3 +287,6 @@ class PPOIntrospective:
         else:
             x = x.permute(0, 3, 1, 2).to(device)
         return x
+
+    def update_critic(self):
+        pass

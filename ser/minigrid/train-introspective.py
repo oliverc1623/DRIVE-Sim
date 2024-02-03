@@ -148,7 +148,7 @@ def train():
     # initialize a PPO agent
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
-    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/PPO_teacher.pth", map_location="cpu"))
+    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/PPO_teacher.pth", map_location="mps"))
     teacher_ppo_agent.policy_old.eval()
 
     # track total training time
@@ -182,24 +182,29 @@ def train():
 
             # select action with policy
             h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t)
-            action = ppo_agent.select_action(state)
+            if h:
+                action = teacher_ppo_agent.select_action(state)
+            else:
+                action = student_ppo_agent.select_action(state)
             state, reward, done, truncated, info = env.step(action)
             state = state["image"]
 
             # saving reward and is_terminals
-            ppo_agent.buffer.rewards.append(reward)
-            ppo_agent.buffer.is_terminals.append(done)
+            student_ppo_agent.buffer.rewards.append(reward)
+            student_ppo_agent.buffer.is_terminals.append(done)
+            student_ppo_agent.buffer.indicators.append(h)
 
             time_step +=1
             current_ep_reward += reward
 
             # update PPO agent
             if time_step % update_timestep == 0:
-                ppo_agent.update()
+                student_ppo_agent.update()
+                teacher_ppo_agent.update_critic()
 
             # if continuous action space; then decay action std of ouput action distribution
             if has_continuous_action_space and time_step % action_std_decay_freq == 0:
-                ppo_agent.decay_action_std(action_std_decay_rate, min_action_std)
+                student_ppo_agent.decay_action_std(action_std_decay_rate, min_action_std)
 
             # log in logging file
             if time_step % log_freq == 0:
@@ -230,7 +235,7 @@ def train():
             if time_step % save_model_freq == 0:
                 print("--------------------------------------------------------------------------------------------")
                 print("saving model at : " + checkpoint_path)
-                ppo_agent.save(checkpoint_path)
+                student_ppo_agent.save(checkpoint_path)
                 print("model saved")
                 print("Elapsed Time  : ", datetime.now().replace(microsecond=0) - start_time)
                 print("--------------------------------------------------------------------------------------------")
