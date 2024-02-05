@@ -39,6 +39,18 @@ class RolloutBuffer:
         del self.is_terminals[:]
         del self.indicators[:]
 
+    def __repr__(self):
+        return "RolloutBuffer()"
+    
+    def __str__(self):
+        return f"Num actions: {len(self.actions)}\n \
+                 Num state: {len(self.states)}\n \
+                 Num logprobs: {len(self.logprobs)}\n \
+                 Num rewards: {len(self.rewards)}\n \
+                 Num state vals: {len(self.state_values)}\n \
+                 Num terminals: {len(self.is_terminals)}\n \
+                 Num indicators: {len(self.indicators)}"
+
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, has_continuous_action_space, action_std_init):
@@ -218,7 +230,7 @@ class PPOIntrospective:
             self.buffer.logprobs.append(action_logprob)
             self.buffer.state_values.append(state_val)
 
-            return action.item(), state_val
+            return action.item(), state, action_logprob, state_val
 
     def update(self):
         # Monte Carlo estimate of returns
