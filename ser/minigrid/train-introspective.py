@@ -203,8 +203,6 @@ def train():
 
             # update PPO agent
             if time_step % update_timestep == 0:
-                print(f"teacher buffer: {teacher_ppo_agent.buffer}")
-                print(f"student buffer: {student_ppo_agent.buffer}")
                 student_ppo_agent.update()
                 # teacher_ppo_agent.update_critic()
 
