@@ -18,3 +18,36 @@ def introspect(
         if abs(teacher_target_val - teacher_source_val) <= inspection_threshold:
             h = 1
     return h
+
+def correct(
+    rolloutbuffer,
+    student_policy,
+    teacher_policy
+):
+    teacher_ratios = []
+    student_ratios = []
+
+    for action, state, indicator, in zip(rolloutbuffer.actions, rolloutbuffer.states, rolloutbuffers.indicators):
+        if indicator:
+
+            # compute importance sampling ratio
+            student_action_logprob, _, _ = student_policy.evaluate(state, action)
+            teacher_action_logprob, _, _ = teacher_policy.evaluate(state, action)
+            ratio = student_action_logprob / teacher_action_logprob
+
+            # append corrections
+            teacher_ratios.append(1)
+            student_ratios.append(ratio)
+
+        else:
+
+            # compute importance sampling ratio
+            student_action_logprob, _, _ = student_policy.evaluate(state, action)
+            teacher_action_logprob, _, _ = teacher_policy.evaluate(state, action)
+            ratio = teacher_action_logprob / student_action_logprob
+
+            teacher_ratios.append(ratio)
+            student_ratios.append(1)
+
+    return teacher_ratios, student_ratios
+            
