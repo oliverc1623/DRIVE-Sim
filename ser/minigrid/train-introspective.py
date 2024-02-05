@@ -183,9 +183,10 @@ def train():
             # select action with policy
             h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t)
             if h:
-                action = teacher_ppo_agent.select_action(state)
+                action, teacher_state_val = teacher_ppo_agent.select_action(state)
+                student_ppo_agent.buffer.state_values.append(teacher_state_val)
             else:
-                action = student_ppo_agent.select_action(state)
+                action, _ = student_ppo_agent.select_action(state)
             state, reward, done, truncated, info = env.step(action)
             state = state["image"]
 

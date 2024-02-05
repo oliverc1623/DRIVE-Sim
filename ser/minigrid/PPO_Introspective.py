@@ -218,7 +218,7 @@ class PPOIntrospective:
             self.buffer.logprobs.append(action_logprob)
             self.buffer.state_values.append(state_val)
 
-            return action.item()
+            return action.item(), state_val
 
     def update(self):
         # Monte Carlo estimate of returns
@@ -239,7 +239,8 @@ class PPOIntrospective:
         old_actions = torch.squeeze(torch.stack(self.buffer.actions, dim=0)).detach().to(device)
         old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs, dim=0)).detach().to(device)
         old_state_values = torch.squeeze(torch.stack(self.buffer.state_values, dim=0)).detach().to(device)
-
+        print(f"rewards: {rewards.shape}")
+        print(f"old_state: {old_state_values.shape}")
         # calculate advantages
         advantages = rewards.detach() - old_state_values.detach()
 
