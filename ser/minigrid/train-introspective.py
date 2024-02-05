@@ -2,6 +2,7 @@ import os
 import glob
 import time
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 import torch
 import numpy as np
@@ -22,6 +23,7 @@ def train():
     env_name = "IntrospectiveLocked"
 
     has_continuous_action_space = False  # continuous action space; else discrete
+    save_frames = False
 
     max_ep_len = 4 * 9**2                   # max timesteps in one episode
     max_training_timesteps = int(3e6)   # break training loop if timeteps > max_training_timesteps
@@ -148,7 +150,7 @@ def train():
     # initialize a PPO agent
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
-    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/PPO_teacher.pth", map_location="mps"))
+    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Instrospective/PPO_Instrospective_0_0.pth"))
     teacher_ppo_agent.policy_old.eval()
 
     # track total training time
@@ -170,12 +172,14 @@ def train():
 
     time_step = 0
     i_episode = 0
+    advice_given = 0
 
     # training loop
     while time_step <= max_training_timesteps:
 
         state, _ = env.reset()
         state = state["image"]
+        
         current_ep_reward = 0
 
         for t in range(1, max_ep_len+1):
@@ -188,10 +192,14 @@ def train():
                 student_ppo_agent.buffer.states.append(teacher_state)
                 student_ppo_agent.buffer.logprobs.append(teacher_action_logprob)
                 student_ppo_agent.buffer.state_values.append(teacher_state_val)
+                advice_given += 1
             else:
                 action, _, _, _ = student_ppo_agent.select_action(state)
             state, reward, done, truncated, info = env.step(action.item())
             state = state["image"]
+
+            if save_frames:
+                plt.imsave(f"frames/frame_{time_step:06}.png", state)
 
             # saving reward and is_terminals
             student_ppo_agent.buffer.rewards.append(reward)
@@ -234,6 +242,9 @@ def train():
 
                 print_running_reward = 0
                 print_running_episodes = 0
+
+                print(f"Advice given: {advice_given}")
+                advice_given = 0
 
             # save model weights
             if time_step % save_model_freq == 0:
