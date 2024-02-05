@@ -13,7 +13,7 @@ from minigrid.wrappers import ImgObsWrapper, RGBImgPartialObsWrapper, RGBImgObsW
 from IntrospectiveEnv import IntrospectiveEnv, IntrospectiveEnvLocked
 
 from PPO_Introspective import PPOIntrospective
-from introspective import introspect
+from introspective import introspect, correct
 
 ################################### Training ###################################
 def train():
@@ -48,7 +48,7 @@ def train():
     gamma = 0.99            # discount factor
 
     lr_actor = 0.0005       # learning rate for actor network
-    lr_critic = 0.001       # learning rate for critic network
+    lr_critic = 0.0005       # learning rate for critic network
 
     random_seed = 0         # set random seed if required (0 = no random seed)
     #####################################################
@@ -151,7 +151,6 @@ def train():
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
     teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Instrospective/PPO_Instrospective_0_0.pth"))
-    teacher_ppo_agent.policy_old.eval()
 
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -211,8 +210,9 @@ def train():
 
             # update PPO agent
             if time_step % update_timestep == 0:
-                student_ppo_agent.update()
-                # teacher_ppo_agent.update_critic()
+                teacher_correction, student_correction = correct(student_ppo_agent.buffer, student_ppo_agent.policy, teacher_ppo_agent.policy_old)
+                teacher_ppo_agent.update_critic(teacher_correction, student_ppo_agent.buffer)
+                student_ppo_agent.update(student_correction)
 
             # if continuous action space; then decay action std of ouput action distribution
             if has_continuous_action_space and time_step % action_std_decay_freq == 0:
