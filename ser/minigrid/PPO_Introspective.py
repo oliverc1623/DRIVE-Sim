@@ -230,7 +230,7 @@ class PPOIntrospective:
             self.buffer.logprobs.append(action_logprob)
             self.buffer.state_values.append(state_val)
 
-            return action.item(), state, action_logprob, state_val
+            return action, state, action_logprob, state_val
 
     def update(self):
         # Monte Carlo estimate of returns

@@ -183,11 +183,14 @@ def train():
             # select action with policy
             h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t)
             if h:
-                action, teacher_state_val = teacher_ppo_agent.select_action(state)
+                action, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state)
+                student_ppo_agent.buffer.actions.append(action)
+                student_ppo_agent.buffer.states.append(teacher_state)
+                student_ppo_agent.buffer.logprobs.append(teacher_action_logprob)
                 student_ppo_agent.buffer.state_values.append(teacher_state_val)
             else:
-                action, _ = student_ppo_agent.select_action(state)
-            state, reward, done, truncated, info = env.step(action)
+                action, _, _, _ = student_ppo_agent.select_action(state)
+            state, reward, done, truncated, info = env.step(action.item())
             state = state["image"]
 
             # saving reward and is_terminals
@@ -200,6 +203,8 @@ def train():
 
             # update PPO agent
             if time_step % update_timestep == 0:
+                print(f"teacher buffer: {teacher_ppo_agent.buffer}")
+                print(f"student buffer: {student_ppo_agent.buffer}")
                 student_ppo_agent.update()
                 # teacher_ppo_agent.update_critic()
 
