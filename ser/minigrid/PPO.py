@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
+import numpy as np
 
 ################################## set device ##################################
 print("============================================================================================")
@@ -33,6 +34,19 @@ class RolloutBuffer:
         del self.rewards[:]
         del self.state_values[:]
         del self.is_terminals[:]
+
+    def generate_minibatch(self, minibatch_size=128):
+        batch_size = len(self.states)  # Assuming all lists are of the same size
+        indices = np.random.choice(batch_size, minibatch_size, replace=False)
+        
+        minibatch_states = [self.states[i] for i in indices]
+        minibatch_actions = [self.actions[i] for i in indices]
+        minibatch_logprobs = [self.logprobs[i] for i in indices]
+        minibatch_rewards = [self.rewards[i] for i in indices]
+        minibatch_state_values = [self.state_values[i] for i in indices]
+        minibatch_is_terminals = [self.is_terminals[i] for i in indices]
+        
+        return minibatch_states, minibatch_actions, minibatch_logprobs, minibatch_rewards, minibatch_state_values, minibatch_is_terminals
 
 
 class ActorCritic(nn.Module):
