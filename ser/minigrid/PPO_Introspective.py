@@ -251,8 +251,7 @@ class PPOIntrospective:
         old_actions = torch.squeeze(torch.stack(self.buffer.actions, dim=0)).detach().to(device)
         old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs, dim=0)).detach().to(device)
         old_state_values = torch.squeeze(torch.stack(self.buffer.state_values, dim=0)).detach().to(device)
-        print(f"rewards: {rewards.shape}")
-        print(f"old_state: {old_state_values.shape}")
+
         # calculate advantages
         advantages = rewards.detach() - old_state_values.detach()
 
@@ -266,14 +265,14 @@ class PPOIntrospective:
             state_values = torch.squeeze(state_values)
             
             # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach()) * correction.to(device).detach()
+            ratios = torch.exp(logprobs - old_logprobs.detach())
 
             # Finding Surrogate Loss  
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5 * self.MseLoss(state_values, rewards) - 0.01 * dist_entropy
+            loss = -torch.min(surr1, surr2) * correction.to(device).detach() + 0.5 * self.MseLoss(state_values, rewards) - 0.01 * dist_entropy
             
             # take gradient step
             self.optimizer.zero_grad()
@@ -308,7 +307,7 @@ class PPOIntrospective:
         for reward, is_terminal in zip(reversed(rolloutbuffer.rewards), reversed(rolloutbuffer.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
+            discounted_reward = reward + (self.gamma * 0.8 * discounted_reward)
             rewards.insert(0, discounted_reward)
 
         # Normalizing the rewards
@@ -334,14 +333,18 @@ class PPOIntrospective:
             state_values = torch.squeeze(state_values)
             
             # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach()) * teacher_correction.to(device).detach()
+            ratios = torch.exp(logprobs - old_logprobs.detach())
 
             # Finding Surrogate Loss  
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
+            # value function loss
+            vf_loss = self.MseLoss(state_values, rewards)
+            vf_loss = torch.clamp(vf_loss, min=-10, max=10)
+
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5 * self.MseLoss(state_values, rewards) - 0.01 * dist_entropy
+            loss = -torch.min(surr1, surr2) * teacher_correction.to(device).detach() + 0.5 * vf_loss - 0.01 * dist_entropy
             
             # take gradient step
             self.optimizer.zero_grad()

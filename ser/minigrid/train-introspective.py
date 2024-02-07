@@ -26,7 +26,7 @@ def train():
     save_frames = False
 
     max_ep_len = 4 * 9**2                   # max timesteps in one episode
-    max_training_timesteps = int(3e6)   # break training loop if timeteps > max_training_timesteps
+    max_training_timesteps = int(5e6)   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 5        # print avg reward in the interval (in num timesteps)
     log_freq = max_ep_len * 2           # log avg reward in the interval (in num timesteps)
@@ -48,7 +48,7 @@ def train():
     gamma = 0.99            # discount factor
 
     lr_actor = 0.0005       # learning rate for actor network
-    lr_critic = 0.0005       # learning rate for critic network
+    lr_critic = 0.001       # learning rate for critic network
 
     random_seed = 0         # set random seed if required (0 = no random seed)
     #####################################################
@@ -184,7 +184,7 @@ def train():
         for t in range(1, max_ep_len+1):
 
             # select action with policy
-            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t)
+            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t, burn_in=156)
             if h:
                 action, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state)
                 student_ppo_agent.buffer.actions.append(action)
@@ -238,12 +238,11 @@ def train():
                 print_avg_reward = print_running_reward / print_running_episodes
                 print_avg_reward = round(print_avg_reward, 2)
 
-                print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {}".format(i_episode, time_step, print_avg_reward))
+                print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {} \t\t Advice given: {}".format(i_episode, time_step, print_avg_reward, advice_given))
 
                 print_running_reward = 0
                 print_running_episodes = 0
 
-                print(f"Advice given: {advice_given}")
                 advice_given = 0
 
             # save model weights
