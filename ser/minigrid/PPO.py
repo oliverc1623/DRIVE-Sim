@@ -235,7 +235,7 @@ class PPO:
         for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            discounted_reward = reward + (self.gamma * 0.8 * discounted_reward)
+            discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
             
         # Normalizing the rewards
@@ -269,7 +269,6 @@ class PPO:
 
             # value function loss
             vf_loss = self.MseLoss(state_values, rewards)
-            vf_loss = torch.clamp(vf_loss, min=-10, max=10)
             
             # final loss of clipped objective PPO
             loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
