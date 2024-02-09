@@ -159,10 +159,12 @@ class SmallUnlockedDoorEnv(MiniGridEnv):
         agent_start_pos=None,
         agent_start_dir=0,
         max_steps: int | None = None,
+        locked = False,
         **kwargs,
     ):
         self.agent_start_pos = agent_start_pos
         self.agent_start_dir = agent_start_dir
+        self.locked = locked
 
         mission_space = MissionSpace(mission_func=self._gen_mission)
 
@@ -197,7 +199,7 @@ class SmallUnlockedDoorEnv(MiniGridEnv):
                 self.grid.set(vertical_wall, i, Wall())
         
         # Place the door and key
-        self.grid.set(vertical_wall, gap, Door("yellow", is_locked=False))
+        self.grid.set(vertical_wall, gap, Door("yellow", is_locked=self.locked))
 
         # Place a goal square in the bottom-right corner
         self.put_obj(Goal(), width-2, height-2)
@@ -206,6 +208,14 @@ class SmallUnlockedDoorEnv(MiniGridEnv):
         agent_width = np.random.randint(1,vertical_wall)
         self.agent_pos = (agent_width, gap)
         self.agent_dir = np.random.randint(0, 4)
+
+        if self.locked:
+            # Place the key
+            def reject_right_of_door(self, pos):
+                w, h = pos
+                return w > vertical_wall
+
+            self.place_obj(Key("yellow"), reject_fn=reject_right_of_door)
 
         self.mission = "get to the green goal square"
 
