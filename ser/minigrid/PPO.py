@@ -84,7 +84,7 @@ class ActorCritic(nn.Module):
                             nn.Conv2d(32, 64, 2),
                             nn.ReLU(),
                             nn.Flatten(1),
-                            nn.Linear(69696, 512),
+                            nn.Linear(64, 512),
                             nn.ReLU(),
                             nn.Linear(512, action_dim),
                             nn.Softmax(-1)
@@ -99,7 +99,7 @@ class ActorCritic(nn.Module):
                             nn.Conv2d(32, 64, 2),
                             nn.ReLU(),
                             nn.Flatten(1),
-                            nn.Linear(69696, 512),
+                            nn.Linear(64, 512),
                             nn.ReLU(),
                             nn.Linear(512, 1)
                         )
@@ -292,7 +292,7 @@ class PPO:
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         
     def preprocess(self, x):
-        x = torch.from_numpy(x).float() / 255.0
+        x = torch.from_numpy(x).float() # / 255.0
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)
         else:
