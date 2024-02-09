@@ -10,7 +10,7 @@ import numpy as np
 import gymnasium as gym
 import minigrid
 from minigrid.wrappers import ImgObsWrapper, RGBImgPartialObsWrapper, RGBImgObsWrapper
-from IntrospectiveEnv import IntrospectiveEnv, IntrospectiveEnvLocked
+from IntrospectiveEnv import IntrospectiveEnv, IntrospectiveEnvLocked, SmallUnlockedDoorEnv
 
 from PPO_Introspective import PPOIntrospective
 from introspective import introspect, correct
@@ -20,12 +20,14 @@ def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "IntrospectiveLocked"
+    env_name = "SmallLockedStudentDoorEnv"
+
+    size=6 # gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
-    save_frames = False
+    save_frames = True
 
-    max_ep_len = 4 * 9**2                   # max timesteps in one episode
+    max_ep_len = 4 * size**2                   # max timesteps in one episode
     max_training_timesteps = int(5e6)   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 5        # print avg reward in the interval (in num timesteps)
@@ -55,8 +57,8 @@ def train():
 
     print("training environment name : " + env_name)
 
-    env = IntrospectiveEnvLocked(render_mode="rgb_array") # gym.make(env_name, render_mode="rgb_array")
-    env = RGBImgObsWrapper(env)
+    env = SmallUnlockedDoorEnv(size=size, render_mode="rgb_array", locked=True)
+    print(f"Gridworld size: {env.max_steps}")
 
     # state space dimension
     state_dim = env.observation_space['image'].shape[2]
@@ -150,7 +152,7 @@ def train():
     # initialize a PPO agent
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
-    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Instrospective/PPO_Instrospective_0_0.pth"))
+    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/SmallUnlockedDoorEnv/PPO_SmallUnlockedDoorEnv_6_2.pth"))
 
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -184,7 +186,7 @@ def train():
         for t in range(1, max_ep_len+1):
 
             # select action with policy
-            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t, burn_in=156)
+            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t, inspection_threshold=0.9)
             if h:
                 action, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state)
                 student_ppo_agent.buffer.actions.append(action)

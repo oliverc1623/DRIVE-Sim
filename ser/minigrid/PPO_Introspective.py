@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
+import cv2
 
 ################################## set device ##################################
 print("============================================================================================")
@@ -87,7 +88,7 @@ class ActorCritic(nn.Module):
                             nn.Conv2d(32, 64, 2),
                             nn.ReLU(),
                             nn.Flatten(1),
-                            nn.Linear(69696, 512),
+                            nn.Linear(64, 512),
                             nn.ReLU(),
                             nn.Linear(512, action_dim),
                             nn.Softmax(-1)
@@ -102,7 +103,7 @@ class ActorCritic(nn.Module):
                             nn.Conv2d(32, 64, 2),
                             nn.ReLU(),
                             nn.Flatten(1),
-                            nn.Linear(69696, 512),
+                            nn.Linear(64, 512),
                             nn.ReLU(),
                             nn.Linear(512, 1)
                         )
@@ -229,7 +230,7 @@ class PPOIntrospective:
             self.buffer.actions.append(action)
             self.buffer.logprobs.append(action_logprob)
             self.buffer.state_values.append(state_val)
-
+    
             return action, state, action_logprob, state_val
 
     def update(self, correction):
@@ -272,7 +273,8 @@ class PPOIntrospective:
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) * correction.to(device).detach() + 0.5 * self.MseLoss(state_values, rewards) - 0.01 * dist_entropy
+            loss = -torch.min(surr1, surr2) + 0.5 * self.MseLoss(state_values, rewards) - 0.01 * dist_entropy
+            loss = loss * correction.to(device).detach()
             
             # take gradient step
             self.optimizer.zero_grad()
@@ -293,7 +295,9 @@ class PPOIntrospective:
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         
     def preprocess(self, x):
-        x = torch.from_numpy(x).float() / 255.0
+        # x = cv2.cvtColor(x, cv2.COLOR_BGR2RGB)
+        # x = cv2.resize(x, (40, 40))
+        x = torch.from_numpy(x).float() # / 255.0
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)
         else:
@@ -307,7 +311,7 @@ class PPOIntrospective:
         for reward, is_terminal in zip(reversed(rolloutbuffer.rewards), reversed(rolloutbuffer.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            discounted_reward = reward + (self.gamma * 0.8 * discounted_reward)
+            discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
 
         # Normalizing the rewards
@@ -341,10 +345,10 @@ class PPOIntrospective:
 
             # value function loss
             vf_loss = self.MseLoss(state_values, rewards)
-            vf_loss = torch.clamp(vf_loss, min=-10, max=10)
 
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) * teacher_correction.to(device).detach() + 0.5 * vf_loss - 0.01 * dist_entropy
+            loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
+            loss = loss * teacher_correction.to(device).detach()
             
             # take gradient step
             self.optimizer.zero_grad()
