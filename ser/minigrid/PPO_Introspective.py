@@ -133,16 +133,16 @@ class ActorCritic(nn.Module):
         state_val = self.critic(state)
 
         return action.detach(), action_logprob.detach(), state_val.detach()
-    
+
     def evaluate(self, state, action):
 
         if self.has_continuous_action_space:
             action_mean = self.actor(state)
-            
+
             action_var = self.action_var.expand_as(action_mean)
             cov_mat = torch.diag_embed(action_var).to(device)
             dist = MultivariateNormal(action_mean, cov_mat)
-            
+
             # For Single Action Environments.
             if self.action_dim == 1:
                 action = action.reshape(-1, self.action_dim)
@@ -173,13 +173,13 @@ class PPOIntrospective:
         self.policy = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
 
         self.optimizer = torch.optim.Adam([
-                        {'params': self.policy.actor.parameters(), 'lr': lr_actor},
-                        {'params': self.policy.critic.parameters(), 'lr': lr_critic}
-                    ])
+            {'params': self.policy.actor.parameters(), 'lr': lr_actor},
+            {'params': self.policy.critic.parameters(), 'lr': lr_critic}
+        ])
 
         self.policy_old = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
-        
+
         self.MseLoss = nn.MSELoss()
 
     def set_action_std(self, new_action_std):
@@ -225,12 +225,12 @@ class PPOIntrospective:
             with torch.no_grad():
                 state = self.preprocess(state).to(device)
                 action, action_logprob, state_val = self.policy_old.act(state)
-            
+
             self.buffer.states.append(state)
             self.buffer.actions.append(action)
             self.buffer.logprobs.append(action_logprob)
             self.buffer.state_values.append(state_val)
-    
+
             return action, state, action_logprob, state_val
 
     def update(self, correction):
@@ -266,7 +266,7 @@ class PPOIntrospective:
             state_values = torch.squeeze(state_values)
             
             # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach())
+            ratios = torch.exp(logprobs - old_logprobs.detach()) * correction.to(device).detach()
 
             # Finding Surrogate Loss  
             surr1 = ratios * advantages
@@ -274,7 +274,7 @@ class PPOIntrospective:
 
             # final loss of clipped objective PPO
             loss = -torch.min(surr1, surr2) + 0.5 * self.MseLoss(state_values, rewards) - 0.01 * dist_entropy
-            loss = loss * correction.to(device).detach()
+            loss = loss
             
             # take gradient step
             self.optimizer.zero_grad()
@@ -335,9 +335,9 @@ class PPOIntrospective:
 
             # match state_values tensor dimensions with rewards tensor
             state_values = torch.squeeze(state_values)
-            
+
             # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach())
+            ratios = torch.exp(logprobs - old_logprobs.detach()) * teacher_correction.to(device).detach()
 
             # Finding Surrogate Loss  
             surr1 = ratios * advantages
@@ -348,7 +348,7 @@ class PPOIntrospective:
 
             # final loss of clipped objective PPO
             loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
-            loss = loss * teacher_correction.to(device).detach()
+            loss = loss
             
             # take gradient step
             self.optimizer.zero_grad()

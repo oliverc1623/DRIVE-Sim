@@ -25,7 +25,7 @@ def train():
     size=6 # gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
-    save_frames = True
+    save_frames = False
 
     max_ep_len = 4 * size**2                   # max timesteps in one episode
     max_training_timesteps = int(5e6)   # break training loop if timeteps > max_training_timesteps
@@ -167,6 +167,7 @@ def train():
     # printing and logging variables
     print_running_reward = 0
     print_running_episodes = 0
+    print_running_advice = 0
 
     log_running_reward = 0
     log_running_episodes = 0
@@ -182,25 +183,27 @@ def train():
         state = state["image"]
         
         current_ep_reward = 0
+        current_advice_given = 0
 
         for t in range(1, max_ep_len+1):
 
             # select action with policy
-            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t, inspection_threshold=0.9)
+            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t, inspection_threshold=0.1)
             if h:
                 action, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state)
                 student_ppo_agent.buffer.actions.append(action)
                 student_ppo_agent.buffer.states.append(teacher_state)
                 student_ppo_agent.buffer.logprobs.append(teacher_action_logprob)
                 student_ppo_agent.buffer.state_values.append(teacher_state_val)
-                advice_given += 1
+                current_advice_given += 1
             else:
                 action, _, _, _ = student_ppo_agent.select_action(state)
             state, reward, done, truncated, info = env.step(action.item())
             state = state["image"]
 
             if save_frames:
-                plt.imsave(f"frames/frame_{time_step:06}.png", state)
+                img = env.render()
+                plt.imsave(f"frames/frame_{time_step:06}.png", img)
 
             # saving reward and is_terminals
             student_ppo_agent.buffer.rewards.append(reward)
@@ -240,12 +243,17 @@ def train():
                 print_avg_reward = print_running_reward / print_running_episodes
                 print_avg_reward = round(print_avg_reward, 2)
 
-                print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {} \t\t Advice given: {}".format(i_episode, time_step, print_avg_reward, advice_given))
+                print_avg_advice = print_running_advice / print_running_episodes
+                print_avg_advice = round(print_avg_advice, 2)
+
+                print("Episode : {} \t\t Timestep : {} \t\t Average Reward : {} \t\t Average Advice given: {}".format(i_episode, 
+                                                                                                                      time_step, 
+                                                                                                                      print_avg_reward, 
+                                                                                                                      print_avg_advice))
 
                 print_running_reward = 0
                 print_running_episodes = 0
-
-                advice_given = 0
+                print_running_advice = 0
 
             # save model weights
             if time_step % save_model_freq == 0:
@@ -263,8 +271,12 @@ def train():
         print_running_reward += current_ep_reward
         print_running_episodes += 1
 
+        print_running_advice += current_advice_given
+
         log_running_reward += current_ep_reward
         log_running_episodes += 1
+
+        
 
         i_episode += 1
 
