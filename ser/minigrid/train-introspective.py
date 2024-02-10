@@ -152,7 +152,10 @@ def train():
     # initialize a PPO agent
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
+    # TODO: we need to fine-tune a copy 
+    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/SmallUnlockedDoorEnv/PPO_SmallUnlockedDoorEnv_6_2.pth"))
     teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/SmallUnlockedDoorEnv/PPO_SmallUnlockedDoorEnv_6_2.pth"))
+    
 
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -188,7 +191,7 @@ def train():
         for t in range(1, max_ep_len+1):
 
             # select action with policy
-            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, t, inspection_threshold=0.1)
+            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.1)
             if h:
                 action, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state)
                 student_ppo_agent.buffer.actions.append(action)
