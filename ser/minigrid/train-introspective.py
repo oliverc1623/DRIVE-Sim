@@ -57,8 +57,9 @@ def train():
 
     print("training environment name : " + env_name)
 
-    env = SmallUnlockedDoorEnv(size=size, render_mode="rgb_array", locked=True)
+    env = gym.make('MiniGrid-Empty-8x8-v0', render_mode="rgb_array")
     print(f"Gridworld size: {env.max_steps}")
+    env = RGBImgObsWrapper(env)
 
     # state space dimension
     state_dim = env.observation_space['image'].shape[2]
