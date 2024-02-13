@@ -88,7 +88,7 @@ class ActorCritic(nn.Module):
                             nn.Conv2d(32, 64, 2),
                             nn.ReLU(),
                             nn.Flatten(1),
-                            nn.Linear(64, 512),
+                            nn.Linear(18496, 512),
                             nn.ReLU(),
                             nn.Linear(512, action_dim),
                             nn.Softmax(-1)
@@ -103,7 +103,7 @@ class ActorCritic(nn.Module):
                             nn.Conv2d(32, 64, 2),
                             nn.ReLU(),
                             nn.Flatten(1),
-                            nn.Linear(64, 512),
+                            nn.Linear(18496, 512),
                             nn.ReLU(),
                             nn.Linear(512, 1)
                         )
@@ -304,7 +304,7 @@ class PPOIntrospective:
         
     def preprocess(self, x):
         # x = cv2.cvtColor(x, cv2.COLOR_BGR2RGB)
-        # x = cv2.resize(x, (40, 40))
+        x = cv2.resize(x, (40, 40))
         x = torch.from_numpy(x).float() # / 255.0
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)

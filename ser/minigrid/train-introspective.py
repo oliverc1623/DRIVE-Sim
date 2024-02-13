@@ -20,9 +20,9 @@ def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "SmallLockedStudentDoorEnv"
+    env_name = "Empty8x8EnvStudent"
 
-    size=6 # gridworld env size
+    size=8 # gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
     save_frames = False
@@ -148,9 +148,9 @@ def train():
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=False)
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=True)
     # TODO: we need to fine-tune a copy 
-    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/SmallUnlockedDoorEnv/PPO_SmallUnlockedDoorEnv_6_2.pth"))
-    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/SmallUnlockedDoorEnv/PPO_SmallUnlockedDoorEnv_6_2.pth"))
-    
+    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/Empty5x5Env/PPO_Empty5x5Env_46_2.pth"))
+    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Empty5x5Env/PPO_Empty5x5Env_46_2.pth"))
+
 
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
