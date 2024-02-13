@@ -147,7 +147,7 @@ class ActorCritic(nn.Module):
             if self.action_dim == 1:
                 action = action.reshape(-1, self.action_dim)
         else:
-            action_probs = self.actor(state)[0]
+            action_probs = self.actor(state)
             dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
@@ -157,7 +157,7 @@ class ActorCritic(nn.Module):
 
 
 class PPOIntrospective:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6):
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher = False, action_std_init=0.6):
 
         self.has_continuous_action_space = has_continuous_action_space
 
@@ -172,10 +172,15 @@ class PPOIntrospective:
 
         self.policy = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
 
-        self.optimizer = torch.optim.Adam([
-            {'params': self.policy.actor.parameters(), 'lr': lr_actor},
-            {'params': self.policy.critic.parameters(), 'lr': lr_critic}
-        ])
+        if teacher:
+            self.optimizer = torch.optim.Adam([
+                {'params': self.policy.critic.parameters(), 'lr': lr_critic}
+            ])
+        else:
+            self.optimizer = torch.optim.Adam([
+                {'params': self.policy.actor.parameters(), 'lr': lr_actor},
+                {'params': self.policy.critic.parameters(), 'lr': lr_critic}
+            ])
 
         self.policy_old = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
@@ -231,7 +236,7 @@ class PPOIntrospective:
             self.buffer.logprobs.append(action_logprob)
             self.buffer.state_values.append(state_val)
 
-            return action, state, action_logprob, state_val
+            return action.item() # , state, action_logprob, state_val
 
     def update(self, correction):
         # Monte Carlo estimate of returns
@@ -266,15 +271,18 @@ class PPOIntrospective:
             state_values = torch.squeeze(state_values)
             
             # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach()) * correction.to(device).detach()
+            ratios = torch.exp(logprobs - old_logprobs.detach()) # * correction.to(device) 
 
             # Finding Surrogate Loss  
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
+            # VF loss
+            vf_loss = self.MseLoss(state_values, rewards)
+            
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5 * self.MseLoss(state_values, rewards) - 0.01 * dist_entropy
-            loss = loss
+            loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
+            # print(f"Student PPO loss: {loss.mean()}")
             
             # take gradient step
             self.optimizer.zero_grad()
@@ -337,18 +345,18 @@ class PPOIntrospective:
             state_values = torch.squeeze(state_values)
 
             # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach()) * teacher_correction.to(device).detach()
+            ratios = torch.exp(logprobs - old_logprobs.detach()) # * teacher_correction.to(device)
 
             # Finding Surrogate Loss  
             surr1 = ratios * advantages
             surr2 = torch.clamp(ratios, 1-self.eps_clip, 1+self.eps_clip) * advantages
 
-            # value function loss
+            # VF loss
             vf_loss = self.MseLoss(state_values, rewards)
-
+            
             # final loss of clipped objective PPO
             loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
-            loss = loss
+            # print(f"teacher PPO loss: {loss.mean()}")
             
             # take gradient step
             self.optimizer.zero_grad()
