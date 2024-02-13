@@ -52,7 +52,7 @@ def train():
     lr_actor = 0.0005       # learning rate for actor network
     lr_critic = 0.001       # learning rate for critic network
 
-    random_seed = 0         # set random seed if required (0 = no random seed)
+    random_seed = 46         # set random seed if required (0 = no random seed)
     #####################################################
 
     print("training environment name : " + env_name)
@@ -93,7 +93,7 @@ def train():
     #####################################################
 
     ################### checkpointing ###################
-    run_num_pretrained = 1      #### change this to prevent overwriting weights in same env_name folder
+    run_num_pretrained = 3      #### change this to prevent overwriting weights in same env_name folder
 
     directory = "PPO_preTrained"
     if not os.path.exists(directory):
@@ -137,12 +137,7 @@ def train():
     print("--------------------------------------------------------------------------------------------")
     print("optimizer learning rate actor : ", lr_actor)
     print("optimizer learning rate critic : ", lr_critic)
-    if random_seed:
-        print("--------------------------------------------------------------------------------------------")
-        print("setting random seed to ", random_seed)
-        torch.manual_seed(random_seed)
-        env.seed(random_seed)
-        np.random.seed(random_seed)
+    
     #####################################################
 
     print("============================================================================================")
@@ -150,8 +145,8 @@ def train():
     ################# training procedure ################
 
     # initialize a PPO agent
-    student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
-    teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
+    student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=False)
+    teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=True)
     # TODO: we need to fine-tune a copy 
     teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/SmallUnlockedDoorEnv/PPO_SmallUnlockedDoorEnv_6_2.pth"))
     teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/SmallUnlockedDoorEnv/PPO_SmallUnlockedDoorEnv_6_2.pth"))
@@ -190,6 +185,13 @@ def train():
 
         for t in range(1, max_ep_len+1):
 
+            if time_step % 500000 == 0:
+                random_seed += 1
+                print("--------------------------------------------------------------------------------------------")
+                print("setting random seed to ", random_seed)
+                torch.manual_seed(random_seed)
+                np.random.seed(random_seed)
+
             # select action with policy
             h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.9)
             if h:
@@ -200,27 +202,29 @@ def train():
                 student_ppo_agent.buffer.state_values.append(teacher_state_val)
                 current_advice_given += 1
             else:
-                action, _, _, _ = student_ppo_agent.select_action(state)
+                action, state, action_logprob, state_val = student_ppo_agent.select_action(state)
             state, reward, done, truncated, info = env.step(action.item())
             state = state["image"]
-
-            if save_frames:
-                img = env.render()
-                plt.imsave(f"frames/frame_{time_step:06}.png", img)
 
             # saving reward and is_terminals
             student_ppo_agent.buffer.rewards.append(reward)
             student_ppo_agent.buffer.is_terminals.append(done)
             student_ppo_agent.buffer.indicators.append(h)
 
+            if save_frames:
+                img = env.render()
+                plt.imsave(f"frames/frame_{time_step:06}.png", img)
+
             time_step +=1
             current_ep_reward += reward
 
             # update PPO agent
             if time_step % update_timestep == 0:
-                teacher_correction, student_correction = correct(student_ppo_agent.buffer, student_ppo_agent.policy, teacher_ppo_agent.policy_old)
+                teacher_correction, student_correction = correct(student_ppo_agent.buffer, student_ppo_agent.policy_old, teacher_ppo_agent.policy_old)
                 teacher_ppo_agent.update_critic(teacher_correction, student_ppo_agent.buffer)
                 student_ppo_agent.update(student_correction)
+                # print(f"teacher policy old critic: {teacher_ppo_agent.policy_old.critic[10].weight[0].sum()}")
+                # print(f"teacher policy critic: {teacher_ppo_agent.policy.critic[10].weight[0].sum()}")
 
             # if continuous action space; then decay action std of ouput action distribution
             if has_continuous_action_space and time_step % action_std_decay_freq == 0:

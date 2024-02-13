@@ -236,7 +236,7 @@ class PPOIntrospective:
             self.buffer.logprobs.append(action_logprob)
             self.buffer.state_values.append(state_val)
 
-            return action.item() # , state, action_logprob, state_val
+            return action, state, action_logprob, state_val
 
     def update(self, correction):
         # Monte Carlo estimate of returns
@@ -271,7 +271,7 @@ class PPOIntrospective:
             state_values = torch.squeeze(state_values)
             
             # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach()) # * correction.to(device) 
+            ratios = torch.exp(logprobs - old_logprobs.detach()) * correction.to(device) 
 
             # Finding Surrogate Loss  
             surr1 = ratios * advantages
@@ -345,7 +345,7 @@ class PPOIntrospective:
             state_values = torch.squeeze(state_values)
 
             # Finding the ratio (pi_theta / pi_theta__old)
-            ratios = torch.exp(logprobs - old_logprobs.detach()) # * teacher_correction.to(device)
+            ratios = torch.exp(logprobs - old_logprobs.detach()) * teacher_correction.to(device)
 
             # Finding Surrogate Loss  
             surr1 = ratios * advantages
