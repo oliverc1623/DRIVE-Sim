@@ -9,7 +9,7 @@ print("=========================================================================
 # set device to cpu or cuda
 device = torch.device('cpu')
 if(torch.cuda.is_available()): 
-    device = torch.device('cuda:0') 
+    device = torch.device('cuda:1') 
     torch.cuda.empty_cache()
     print("Device set to : " + str(torch.cuda.get_device_name(device)))
 elif(torch.backends.mps.is_available()):
@@ -75,7 +75,7 @@ class ActorCritic(nn.Module):
                             nn.Flatten(1),
                             nn.Linear(69696, 512),
                             nn.ReLU(),
-                            nn.Linear(512, action_dim),
+                            nn.Linear(64, action_dim),
                             nn.Softmax(-1)
                         )
         else:
@@ -88,7 +88,7 @@ class ActorCritic(nn.Module):
                             nn.Conv2d(32, 64, 2),
                             nn.ReLU(),
                             nn.Flatten(1),
-                            nn.Linear(18496, 512),
+                            nn.Linear(53824, 512),
                             nn.ReLU(),
                             nn.Linear(512, action_dim),
                             nn.Softmax(-1)
@@ -103,7 +103,7 @@ class ActorCritic(nn.Module):
                             nn.Conv2d(32, 64, 2),
                             nn.ReLU(),
                             nn.Flatten(1),
-                            nn.Linear(18496, 512),
+                            nn.Linear(53824, 512),
                             nn.ReLU(),
                             nn.Linear(512, 1)
                         )
@@ -228,7 +228,7 @@ class PPOIntrospective:
             return action.detach().cpu().numpy().flatten()
         else:
             with torch.no_grad():
-                state = self.preprocess(state).to(device)
+                state = self.preprocess(state, invert=True).to(device)
                 action, action_logprob, state_val = self.policy_old.act(state)
 
             self.buffer.states.append(state)
@@ -302,10 +302,11 @@ class PPOIntrospective:
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         
-    def preprocess(self, x):
-        # x = cv2.cvtColor(x, cv2.COLOR_BGR2RGB)
-        x = cv2.resize(x, (40, 40))
-        x = torch.from_numpy(x).float() # / 255.0
+    def preprocess(self, x, invert):
+        if invert:
+            x = (255 - x)
+        x = cv2.resize(x, (64, 64))
+        x = torch.from_numpy(x).float() / 255.0
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)
         else:

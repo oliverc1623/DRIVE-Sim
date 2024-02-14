@@ -20,15 +20,15 @@ def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "Empty8x8EnvStudent"
+    env_name = "LavaCrossingS9N1InvertedStudent"
 
-    size=8 # gridworld env size
+    size=9 # gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
     save_frames = False
 
     max_ep_len = 4 * size**2                   # max timesteps in one episode
-    max_training_timesteps = int(5e6)   # break training loop if timeteps > max_training_timesteps
+    max_training_timesteps = int(1e6)   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 5        # print avg reward in the interval (in num timesteps)
     log_freq = max_ep_len * 2           # log avg reward in the interval (in num timesteps)
@@ -52,12 +52,12 @@ def train():
     lr_actor = 0.0005       # learning rate for actor network
     lr_critic = 0.001       # learning rate for critic network
 
-    random_seed = 46         # set random seed if required (0 = no random seed)
+    random_seed = 6         # set random seed if required (0 = no random seed)
     #####################################################
 
     print("training environment name : " + env_name)
 
-    env = gym.make('MiniGrid-Empty-8x8-v0', render_mode="rgb_array")
+    env = env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode="rgb_array") # SmallUnlockedDoorEnv(size=size, render_mode="rgb_array", locked=True, variant=False) 
     print(f"Gridworld size: {env.max_steps}")
     env = RGBImgObsWrapper(env)
 
@@ -149,8 +149,8 @@ def train():
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=False)
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=True)
     # TODO: we need to fine-tune a copy 
-    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/Empty5x5Env/PPO_Empty5x5Env_46_2.pth"))
-    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Empty5x5Env/PPO_Empty5x5Env_46_2.pth"))
+    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/Empty8x8Teacher/PPO_Empty8x8Teacher_6_1.pth"))
+    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Empty8x8Teacher/PPO_Empty8x8Teacher_6_1.pth"))
 
 
     # track total training time
@@ -194,7 +194,7 @@ def train():
                 np.random.seed(random_seed)
 
             # select action with policy
-            h = introspect(teacher_ppo_agent.preprocess(state), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.9)
+            h = introspect(teacher_ppo_agent.preprocess(state, invert=True), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.9)
             if h:
                 action, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state)
                 student_ppo_agent.buffer.actions.append(action)
