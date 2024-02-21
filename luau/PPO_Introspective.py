@@ -7,8 +7,8 @@ from torch.distributions import Categorical, Beta
 from torch.autograd import Function
 import numpy as np
 import cv2
+from collections import deque
 
-device = "cuda:0"
 
 ################################## set device ##################################
 print("============================================================================================")
@@ -81,35 +81,29 @@ class Encoder(nn.Module):
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, has_continuous_action_space, action_std_init, latent_size):
         super(ActorCritic, self).__init__()
-
-        self.main = Encoder(latent_size=latent_size)
-
-        # saved checkpoints could contain extra weights such as linear_logsigma 
-        weights = torch.load("../../LUSR/checkpoints/encoder.pt", map_location=torch.device('cpu'))
-        for k in list(weights.keys()):
-            if k not in self.main.state_dict().keys():
-                del weights[k]
-        self.main.load_state_dict(weights)
-        print("Loaded Weights")
         
         self.has_continuous_action_space = has_continuous_action_space
 
         # actor
         self.actor = nn.Sequential(
-                        nn.Linear(latent_size, 400),
+                        nn.Linear(latent_size*4, 64),
                         nn.ReLU(),
-                        nn.Linear(400, 300),
+                        nn.Linear(64, 256),
                         nn.ReLU(),
-                        nn.Linear(300, action_dim),
+                        nn.Linear(256, 512),
+                        nn.ReLU(),
+                        nn.Linear(512, action_dim),
                         nn.Softmax(-1)
                     )
         # critic
         self.critic = nn.Sequential(
-                            nn.Linear(latent_size, 400),
+                            nn.Linear(latent_size*4, 64),
                             nn.ReLU(),
-                            nn.Linear(400, 300),
+                            nn.Linear(64, 256),
                             nn.ReLU(),
-                            nn.Linear(300, 1)
+                            nn.Linear(256, 512),
+                            nn.ReLU(),
+                            nn.Linear(512, 1)
                         )
         
     def set_action_std(self, new_action_std):
@@ -123,9 +117,7 @@ class ActorCritic(nn.Module):
     def forward(self):
         raise NotImplementedError
     
-    def act(self, state):
-        features = self.main(state.float()).detach()
-        
+    def act(self, features):        
         action_probs = self.actor(features)[0]
         dist = Categorical(action_probs)
         action = dist.sample()
@@ -134,9 +126,7 @@ class ActorCritic(nn.Module):
 
         return action.detach(), action_logprob.detach(), state_val.detach()
     
-    def evaluate(self, state, action):
-        features = self.main(state.float()).detach()
-        
+    def evaluate(self, features, action):        
         action_probs = self.actor(features)
         dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
@@ -149,11 +139,30 @@ class ActorCritic(nn.Module):
 class PPOIntrospective:
     def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher = False, action_std_init=0.6, latent_size=16):
 
+        self.main = Encoder(latent_size=latent_size).to(device)
+
+        # saved checkpoints could contain extra weights such as linear_logsigma 
+        weights = torch.load("../../LUSR/checkpoints/encoder.pt", map_location=torch.device('cpu'))
+        for k in list(weights.keys()):
+            if k not in self.main.state_dict().keys():
+                del weights[k]
+        self.main.load_state_dict(weights)
+        print("Loaded Weights")
+
         self.has_continuous_action_space = has_continuous_action_space
 
         if has_continuous_action_space:
             self.action_std = action_std_init
 
+        # stacked buffer
+        self.feature_queue = deque(maxlen=4)
+        self.preprocess(np.zeros((72,72,3)))
+        self.preprocess(np.zeros((72,72,3)))
+        self.preprocess(np.zeros((72,72,3)))
+        # self.feature_queue.append(blank1)
+        # self.feature_queue.append(blank2)
+        # self.feature_queue.append(blank3)
+        
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
@@ -204,29 +213,16 @@ class PPOIntrospective:
         print("--------------------------------------------------------------------------------------------")
 
     def select_action(self, state):
+        with torch.no_grad():
+            stacked_features = self.preprocess(state).to(device)
+            action, action_logprob, state_val = self.policy_old.act(stacked_features.detach())
+        
+        self.buffer.states.append(stacked_features)
+        self.buffer.actions.append(action)
+        self.buffer.logprobs.append(action_logprob)
+        self.buffer.state_values.append(state_val)
 
-        if self.has_continuous_action_space:
-            with torch.no_grad():
-                state = torch.FloatTensor(state).to(device)
-                action, action_logprob, state_val = self.policy_old.act(state)
-
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-            self.buffer.state_values.append(state_val)
-
-            return action.detach().cpu().numpy().flatten()
-        else:
-            with torch.no_grad():
-                state = self.preprocess(state, invert=False).to(device)
-                action, action_logprob, state_val = self.policy_old.act(state)
-
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-            self.buffer.state_values.append(state_val)
-
-            return action, state, action_logprob, state_val
+        return action, stacked_features, action_logprob, state_val
 
     def update(self, correction):
         # Monte Carlo estimate of returns
@@ -235,7 +231,7 @@ class PPOIntrospective:
         for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
+            discounted_reward = reward + (self.gamma * discounted_reward * 0.95)
             rewards.insert(0, discounted_reward)
             
         # Normalizing the rewards
@@ -271,12 +267,14 @@ class PPOIntrospective:
             vf_loss = self.MseLoss(state_values, rewards)
             
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
+            loss = -torch.min(surr1, surr2) + 1.0 * vf_loss - 0.01 * dist_entropy
             # print(f"Student PPO loss: {loss.mean()}")
             
             # take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
+            
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.1)
             self.optimizer.step()
             
         # Copy new weights into old policy
@@ -292,16 +290,22 @@ class PPOIntrospective:
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         
-    def preprocess(self, x, invert):
+    def preprocess(self, x, invert=False):
         if invert:
             x = (255 - x)
-        x = cv2.resize(x, (64, 64))
+        start_row, end_row = (4, 68)
+        start_col, end_col = (4, 68)
+        x = x[start_row:end_row, start_col:end_col, :]
         x = torch.from_numpy(x).float()
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)
         else:
             x = x.permute(0, 3, 1, 2).to(device)
-        return x
+
+        feature = self.main(x.float())
+        self.feature_queue.append(feature)
+        stacked_features = torch.cat(list(self.feature_queue), 1)
+        return stacked_features
 
     def update_critic(self, teacher_correction, rolloutbuffer):
         # Monte Carlo estimate of returns
@@ -310,7 +314,7 @@ class PPOIntrospective:
         for reward, is_terminal in zip(reversed(rolloutbuffer.rewards), reversed(rolloutbuffer.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward)
+            discounted_reward = reward + (self.gamma * discounted_reward * 0.95)
             rewards.insert(0, discounted_reward)
 
         # Normalizing the rewards
@@ -346,12 +350,13 @@ class PPOIntrospective:
             vf_loss = self.MseLoss(state_values, rewards)
             
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
+            loss = -torch.min(surr1, surr2) + 1.0 * vf_loss - 0.01 * dist_entropy
             # print(f"teacher PPO loss: {loss.mean()}")
             
             # take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
+            torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.1)
             self.optimizer.step()
 
         # clear buffer
