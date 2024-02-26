@@ -83,20 +83,24 @@ class ActorCritic(nn.Module):
 
         # actor
         self.actor = nn.Sequential(
-                        nn.Linear(latent_size*4, 512),
+                        nn.Linear(latent_size*4, 64),
                         nn.ReLU(),
-                        nn.Linear(512, 400),
+                        nn.Linear(64, 256),
                         nn.ReLU(),
-                        nn.Linear(400, action_dim),
+                        nn.Linear(256, 512),
+                        nn.ReLU(),
+                        nn.Linear(512, action_dim),
                         nn.Softmax(-1)
                     )
         # critic
         self.critic = nn.Sequential(
-                            nn.Linear(latent_size*4, 512),
+                            nn.Linear(latent_size*4, 64),
                             nn.ReLU(),
-                            nn.Linear(512, 400),
+                            nn.Linear(64, 256),
                             nn.ReLU(),
-                            nn.Linear(400, 1)
+                            nn.Linear(256, 512),
+                            nn.ReLU(),
+                            nn.Linear(512, 1)
                         )
         
     def set_action_std(self, new_action_std):
@@ -130,12 +134,12 @@ class ActorCritic(nn.Module):
 
 
 class PPO:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6, latent_size=16):
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6, latent_size=64):
 
         self.main = Encoder(latent_size=latent_size).to(device)
 
         # saved checkpoints could contain extra weights such as linear_logsigma 
-        weights = torch.load("../../LUSR/checkpoints/encoder.pt", map_location=torch.device('cpu'))
+        weights = torch.load("../../LUSR/checkpoints/encoder2.pt", map_location=torch.device('cpu'))
         for k in list(weights.keys()):
             if k not in self.main.state_dict().keys():
                 del weights[k]
@@ -147,11 +151,11 @@ class PPO:
         if has_continuous_action_space:
             self.action_std = action_std_init
 
+        # stacked buffer
         self.feature_queue = deque(maxlen=4)
-        
-        blank1 = self.preprocess(np.zeros((72,72,3)))
-        blank2 = self.preprocess(np.zeros((72,72,3)))
-        blank3 = self.preprocess(np.zeros((72,72,3)))
+        blank1 = self.preprocess(np.zeros((64,64,3)))
+        blank2 = self.preprocess(np.zeros((64,64,3)))
+        blank3 = self.preprocess(np.zeros((64,64,3)))
         self.feature_queue.append(blank1)
         self.feature_queue.append(blank2)
         self.feature_queue.append(blank3)
@@ -200,31 +204,18 @@ class PPO:
         print("--------------------------------------------------------------------------------------------")
 
     def select_action(self, state):
+        with torch.no_grad():
+            feature = self.preprocess(state).to(device)
+            self.feature_queue.append(feature)
+            stacked_features = torch.cat(list(self.feature_queue), 1)
+            action, action_logprob, state_val = self.policy_old.act(stacked_features.detach())
 
-        if self.has_continuous_action_space:
-            with torch.no_grad():
-                state = torch.FloatTensor(state).to(device)
-                action, action_logprob, state_val = self.policy_old.act(state)
+        self.buffer.states.append(stacked_features)
+        self.buffer.actions.append(action)
+        self.buffer.logprobs.append(action_logprob)
+        self.buffer.state_values.append(state_val)
 
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-            self.buffer.state_values.append(state_val)
-
-            return action.detach().cpu().numpy().flatten()
-        else:
-            with torch.no_grad():
-                feature = self.preprocess(state).to(device)
-                self.feature_queue.append(feature)
-                stacked_features = torch.cat(list(self.feature_queue), 1)
-                action, action_logprob, state_val = self.policy_old.act(stacked_features.detach())
-            
-            self.buffer.states.append(stacked_features)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-            self.buffer.state_values.append(state_val)
-
-            return action.item()
+        return action.item()
 
     def update(self):
         # Monte Carlo estimate of returns
@@ -274,10 +265,9 @@ class PPO:
             # take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
-
             torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.1)
             self.optimizer.step()
-            
+
         # Copy new weights into old policy
         self.policy_old.load_state_dict(self.policy.state_dict())
 
@@ -294,9 +284,9 @@ class PPO:
     def preprocess(self, x, invert=False):
         if invert:
             x = (255 - x)
-        start_row, end_row = (4, 68)
-        start_col, end_col = (4, 68)
-        x = x[start_row:end_row, start_col:end_col, :]
+        # start_row, end_row = (4, 68)
+        # start_col, end_col = (4, 68)
+        # x = x[start_row:end_row, start_col:end_col, :]
         x = torch.from_numpy(x).float()
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)

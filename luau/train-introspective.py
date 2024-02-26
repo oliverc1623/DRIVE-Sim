@@ -3,17 +3,68 @@ import glob
 import time
 from datetime import datetime
 import matplotlib.pyplot as plt
-
-import torch
 import numpy as np
-
+from collections import deque
+import torch
+import torch.nn as nn
+from torch.distributions import MultivariateNormal
+from torch.distributions import Categorical
+import torch.nn.functional as F
+from torch.distributions import Categorical, Beta
+from torch.autograd import Function
 import gymnasium as gym
 import minigrid
 from minigrid.wrappers import ImgObsWrapper, RGBImgPartialObsWrapper, RGBImgObsWrapper
-# from IntrospectiveEnv import IntrospectiveEnv, IntrospectiveEnvLocked, SmallUnlockedDoorEnv
-
 from PPO_Introspective import PPOIntrospective
 from introspective import introspect, correct
+
+device = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+class Encoder(nn.Module):
+    def __init__(self, latent_size = 32, input_channel = 3):
+        super(Encoder, self).__init__()
+        self.latent_size = latent_size
+        self.main = nn.Sequential(
+            nn.Conv2d(input_channel, 32, 4, stride=2), nn.ReLU(),
+            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
+            nn.Conv2d(64, 128, 4, stride=2), nn.ReLU(),
+            nn.Conv2d(128, 256, 4, stride=2), nn.ReLU()
+        )
+        self.linear_mu = nn.Linear(2*2*256, latent_size)
+
+    def forward(self, x):
+        x = self.main(x/255.0)
+        x = x.view(x.size(0), -1)
+        mu = self.linear_mu(x)
+        return mu
+
+main = Encoder(latent_size=64).to(device)
+weights = torch.load("../../LUSR/checkpoints/encoder2.pt", map_location=torch.device('cpu'))
+for k in list(weights.keys()):
+    if k not in main.state_dict().keys():
+        del weights[k]
+main.load_state_dict(weights)
+print("Loaded Weights")
+
+# stacked buffer
+feature_queue = deque(maxlen=4)
+
+def preprocess(x, invert=False):
+    if invert:
+        x = (255 - x)
+    x = torch.from_numpy(x).float()
+    if len(x.shape) == 3:
+        x = x.permute(2, 0, 1).unsqueeze(0).to(device)
+    else:
+        x = x.permute(0, 3, 1, 2).to(device)
+    feature = main(x.float())
+    feature_queue.append(feature)
+    stacked_features = torch.cat(list(feature_queue), 1)
+    return stacked_features
+
+preprocess(np.zeros((64,64,3)))
+preprocess(np.zeros((64,64,3)))
+preprocess(np.zeros((64,64,3)))
 
 ################################### Training ###################################
 def train():
@@ -22,13 +73,13 @@ def train():
     ####### initialize environment hyperparameters ######
     env_name = "LavaCrossingS9N1StudentVAE"
 
-    size=9 # gridworld env size
+    size=9 #gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
     save_frames = False
 
     max_ep_len = 4 * size**2                   # max timesteps in one episode
-    max_training_timesteps = int(1e6)   # break training loop if timeteps > max_training_timesteps
+    max_training_timesteps = int(1e7)   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 5        # print avg reward in the interval (in num timesteps)
     log_freq = max_ep_len * 2           # log avg reward in the interval (in num timesteps)
@@ -52,12 +103,12 @@ def train():
     lr_actor = 0.0005       # learning rate for actor network
     lr_critic = 0.001       # learning rate for critic network
 
-    random_seed = 6         # set random seed if required (0 = no random seed)
+    random_seed = 46         # set random seed if required (0 = no random seed)
     #####################################################
 
     print("training environment name : " + env_name)
 
-    env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode="rgb_array") # SmallUnlockedDoorEnv(size=size, render_mode="rgb_array", locked=True, variant=False) 
+    env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode="rgb_array")
     print(f"Gridworld size: {env.max_steps}")
     env = RGBImgObsWrapper(env)
 
@@ -94,7 +145,7 @@ def train():
     #####################################################
 
     ################### checkpointing ###################
-    run_num_pretrained = 3      #### change this to prevent overwriting weights in same env_name folder
+    run_num_pretrained = 4      #### change this to prevent overwriting weights in same env_name folder
 
     directory = "PPO_preTrained"
     if not os.path.exists(directory):
@@ -146,8 +197,8 @@ def train():
 
     # initialize a PPO agent
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=False)
+    
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=True)
-    # TODO: we need to fine-tune a copy 
     teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/Empty8x8TeacherVAE/PPO_Empty8x8TeacherVAE_6_2.pth"))
     teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Empty8x8TeacherVAE/PPO_Empty8x8TeacherVAE_6_2.pth"))
 
@@ -179,7 +230,6 @@ def train():
 
         state, _ = env.reset()
         state = state["image"]
-        
         current_ep_reward = 0
         current_advice_given = 0
 
@@ -193,7 +243,8 @@ def train():
                 np.random.seed(random_seed)
 
             # select action with policy
-            h = introspect(teacher_ppo_agent.preprocess(state, invert=True), teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.9)
+            state = preprocess(state, False)
+            h = introspect(state, teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.15)
             if h:
                 action, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state)
                 student_ppo_agent.buffer.actions.append(action)
@@ -202,7 +253,7 @@ def train():
                 student_ppo_agent.buffer.state_values.append(teacher_state_val)
                 current_advice_given += 1
             else:
-                action, state, action_logprob, state_val = student_ppo_agent.select_action(state)
+                action, _, _, _ = student_ppo_agent.select_action(state)
             state, reward, done, truncated, info = env.step(action.item())
             state = state["image"]
 
@@ -223,8 +274,6 @@ def train():
                 teacher_correction, student_correction = correct(student_ppo_agent.buffer, student_ppo_agent.policy_old, teacher_ppo_agent.policy_old)
                 teacher_ppo_agent.update_critic(teacher_correction, student_ppo_agent.buffer)
                 student_ppo_agent.update(student_correction)
-                # print(f"teacher policy old critic: {teacher_ppo_agent.policy_old.critic[10].weight[0].sum()}")
-                # print(f"teacher policy critic: {teacher_ppo_agent.policy.critic[10].weight[0].sum()}")
 
             # if continuous action space; then decay action std of ouput action distribution
             if has_continuous_action_space and time_step % action_std_decay_freq == 0:
@@ -277,13 +326,10 @@ def train():
 
         print_running_reward += current_ep_reward
         print_running_episodes += 1
-
         print_running_advice += current_advice_given
 
         log_running_reward += current_ep_reward
         log_running_episodes += 1
-
-        
 
         i_episode += 1
 

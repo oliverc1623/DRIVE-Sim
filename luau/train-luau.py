@@ -18,15 +18,15 @@ def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "Empty8x8TeacherVAE"
+    env_name = "LavaCrossingS9N1BaselineVAE"
 
-    size=8 # gridworld env size
+    size=9 # gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
-    save_frames = True
+    save_frames = False
 
     max_ep_len = 4 * size**2                   # max timesteps in one episode
-    max_training_timesteps = int(1e5)   # break training loop if timeteps > max_training_timesteps
+    max_training_timesteps = int(1e7)   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 5        # print avg reward in the interval (in num timesteps)
     log_freq = max_ep_len * 2           # log avg reward in the interval (in num timesteps)
@@ -47,16 +47,17 @@ def train():
     eps_clip = 0.2          # clip parameter for PPO
     gamma = 0.99            # discount factor
 
-    lr_actor = 0.0005       # learning rate for actor network
+    lr_actor = 0.0005     # learning rate for actor network
     lr_critic = 0.001       # learning rate for critic network
 
-    random_seed = 6         # set random seed if required (0 = no random seed)
+    random_seed = 96         # set random seed if required (0 = no random seed)
     #####################################################
 
     print("training environment name : " + env_name)
 
-    env = gym.make('MiniGrid-Empty-8x8-v0', render_mode="rgb_array")
-    env = RGBImgObsWrapper(env)    
+    env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode="rgb_array")
+    # gym.make('MiniGrid-Empty-8x8-v0', render_mode="rgb_array") #
+    env = RGBImgObsWrapper(env) 
     print(f"Gridworld size: {env.max_steps}")
 
     # state space dimension
@@ -92,7 +93,7 @@ def train():
     #####################################################
 
     ################### checkpointing ###################
-    run_num_pretrained = 2   #### change this to prevent overwriting weights in same env_name folder
+    run_num_pretrained = 5   #### change this to prevent overwriting weights in same env_name folder
 
     directory = "PPO_preTrained"
     if not os.path.exists(directory):
@@ -183,6 +184,7 @@ def train():
                 np.random.seed(random_seed)
 
             # select action with policy
+
             action = ppo_agent.select_action(state)
             state, reward, done, truncated, info = env.step(action)
             state = state["image"]

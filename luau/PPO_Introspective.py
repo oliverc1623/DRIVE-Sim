@@ -59,25 +59,6 @@ class RolloutBuffer:
                  Num indicators: {len(self.indicators)}"
 
 
-class Encoder(nn.Module):
-    def __init__(self, latent_size = 32, input_channel = 3):
-        super(Encoder, self).__init__()
-        self.latent_size = latent_size
-        self.main = nn.Sequential(
-            nn.Conv2d(input_channel, 32, 4, stride=2), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
-            nn.Conv2d(64, 128, 4, stride=2), nn.ReLU(),
-            nn.Conv2d(128, 256, 4, stride=2), nn.ReLU()
-        )
-        self.linear_mu = nn.Linear(2*2*256, latent_size)
-
-    def forward(self, x):
-        x = self.main(x/255.0)
-        x = x.view(x.size(0), -1)
-        mu = self.linear_mu(x)
-        return mu
-
-
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim, has_continuous_action_space, action_std_init, latent_size):
         super(ActorCritic, self).__init__()
@@ -137,32 +118,13 @@ class ActorCritic(nn.Module):
 
 
 class PPOIntrospective:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher = False, action_std_init=0.6, latent_size=16):
-
-        self.main = Encoder(latent_size=latent_size).to(device)
-
-        # saved checkpoints could contain extra weights such as linear_logsigma 
-        weights = torch.load("../../LUSR/checkpoints/encoder.pt", map_location=torch.device('cpu'))
-        for k in list(weights.keys()):
-            if k not in self.main.state_dict().keys():
-                del weights[k]
-        self.main.load_state_dict(weights)
-        print("Loaded Weights")
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher = False, action_std_init=0.6, latent_size=64):
 
         self.has_continuous_action_space = has_continuous_action_space
 
         if has_continuous_action_space:
             self.action_std = action_std_init
-
-        # stacked buffer
-        self.feature_queue = deque(maxlen=4)
-        self.preprocess(np.zeros((72,72,3)))
-        self.preprocess(np.zeros((72,72,3)))
-        self.preprocess(np.zeros((72,72,3)))
-        # self.feature_queue.append(blank1)
-        # self.feature_queue.append(blank2)
-        # self.feature_queue.append(blank3)
-        
+    
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
@@ -214,15 +176,14 @@ class PPOIntrospective:
 
     def select_action(self, state):
         with torch.no_grad():
-            stacked_features = self.preprocess(state).to(device)
-            action, action_logprob, state_val = self.policy_old.act(stacked_features.detach())
-        
-        self.buffer.states.append(stacked_features)
+            action, action_logprob, state_val = self.policy_old.act(state.detach())
+
+        self.buffer.states.append(state)
         self.buffer.actions.append(action)
         self.buffer.logprobs.append(action_logprob)
         self.buffer.state_values.append(state_val)
 
-        return action, stacked_features, action_logprob, state_val
+        return action, state, action_logprob, state_val
 
     def update(self, correction):
         # Monte Carlo estimate of returns
@@ -273,7 +234,6 @@ class PPOIntrospective:
             # take gradient step
             self.optimizer.zero_grad()
             loss.mean().backward()
-            
             torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.1)
             self.optimizer.step()
             
@@ -289,23 +249,6 @@ class PPOIntrospective:
     def load(self, checkpoint_path):
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
-        
-    def preprocess(self, x, invert=False):
-        if invert:
-            x = (255 - x)
-        start_row, end_row = (4, 68)
-        start_col, end_col = (4, 68)
-        x = x[start_row:end_row, start_col:end_col, :]
-        x = torch.from_numpy(x).float()
-        if len(x.shape) == 3:
-            x = x.permute(2, 0, 1).unsqueeze(0).to(device)
-        else:
-            x = x.permute(0, 3, 1, 2).to(device)
-
-        feature = self.main(x.float())
-        self.feature_queue.append(feature)
-        stacked_features = torch.cat(list(self.feature_queue), 1)
-        return stacked_features
 
     def update_critic(self, teacher_correction, rolloutbuffer):
         # Monte Carlo estimate of returns
