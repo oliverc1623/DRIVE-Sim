@@ -5,6 +5,7 @@ from datetime import datetime
 
 import torch
 import numpy as np
+import matplotlib.pyplot as plt
 
 import gymnasium as gym
 import minigrid
@@ -18,12 +19,12 @@ def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "SmallUnlockedDoorEnv"
+    env_name = "LavaCrossingS9N1Stacked"
 
-    size=6 # gridworld env size
+    size=9 # gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
-    save_frames = True
+    save_frames = False
 
     max_ep_len = 4 * size**2                   # max timesteps in one episode
     max_training_timesteps = int(5e6)   # break training loop if timeteps > max_training_timesteps
@@ -47,7 +48,7 @@ def train():
     eps_clip = 0.2          # clip parameter for PPO
     gamma = 0.99            # discount factor
 
-    lr_actor = 0.0005       # learning rate for actor network
+    lr_actor = 0.0001       # learning rate for actor network
     lr_critic = 0.001       # learning rate for critic network
 
     random_seed = 6         # set random seed if required (0 = no random seed)
@@ -55,9 +56,9 @@ def train():
 
     print("training environment name : " + env_name)
 
-    env = SmallUnlockedDoorEnv(size=size, render_mode="rgb_array")
+    env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode="rgb_array")
+    # env = RGBImgObsWrapper(env)    
     print(f"Gridworld size: {env.max_steps}")
-    # env = RGBImgObsWrapper(env)
 
     # state space dimension
     state_dim = env.observation_space['image'].shape[2]
@@ -170,6 +171,7 @@ def train():
     while time_step <= max_training_timesteps:
 
         state, _ = env.reset()
+        direction = state["direction"]
         state = state["image"]
         current_ep_reward = 0
 
@@ -183,13 +185,18 @@ def train():
                 np.random.seed(random_seed)
 
             # select action with policy
-            action = ppo_agent.select_action(state)
+            action = ppo_agent.select_action(state, direction)
             state, reward, done, truncated, info = env.step(action)
+            direction = state["direction"]
             state = state["image"]
 
             # saving reward and is_terminals
             ppo_agent.buffer.rewards.append(reward)
             ppo_agent.buffer.is_terminals.append(done)
+
+            if save_frames:
+                img = env.render()
+                plt.imsave(f"frames/frame_{time_step:06}.png", img)
 
             time_step +=1
             current_ep_reward += reward

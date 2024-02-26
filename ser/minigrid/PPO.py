@@ -3,6 +3,8 @@ import torch.nn as nn
 from torch.distributions import MultivariateNormal
 from torch.distributions import Categorical
 import numpy as np
+from collections import deque
+import torch.nn.functional as F
 
 ################################## set device ##################################
 print("============================================================================================")
@@ -21,6 +23,7 @@ print("=========================================================================
 class RolloutBuffer:
     def __init__(self):
         self.actions = []
+        self.direction = []
         self.states = []
         self.logprobs = []
         self.rewards = []
@@ -30,6 +33,7 @@ class RolloutBuffer:
     def clear(self):
         del self.actions[:]
         del self.states[:]
+        del self.direction[:]
         del self.logprobs[:]
         del self.rewards[:]
         del self.state_values[:]
@@ -38,15 +42,16 @@ class RolloutBuffer:
     def generate_minibatch(self, minibatch_size=128):
         batch_size = len(self.states)  # Assuming all lists are of the same size
         indices = np.random.choice(batch_size, minibatch_size, replace=False)
-        
+
         minibatch_states = [self.states[i] for i in indices]
+        minibatch_direction = [self.direction[i] for i in indices]
         minibatch_actions = [self.actions[i] for i in indices]
         minibatch_logprobs = [self.logprobs[i] for i in indices]
         minibatch_rewards = [self.rewards[i] for i in indices]
         minibatch_state_values = [self.state_values[i] for i in indices]
         minibatch_is_terminals = [self.is_terminals[i] for i in indices]
         
-        return minibatch_states, minibatch_actions, minibatch_logprobs, minibatch_rewards, minibatch_state_values, minibatch_is_terminals
+        return minibatch_states, minibatch_direction, minibatch_actions, minibatch_logprobs, minibatch_rewards, minibatch_state_values, minibatch_is_terminals
 
 
 class ActorCritic(nn.Module):
@@ -58,52 +63,25 @@ class ActorCritic(nn.Module):
         if has_continuous_action_space:
             self.action_dim = action_dim
             self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
-        # actor
-        if has_continuous_action_space :
-            self.actor = nn.Sequential(
-                            nn.Conv2d(state_dim, 16, 2),
-                            nn.ReLU(),
-                            nn.MaxPool2d(2),
-                            nn.Conv2d(16, 32, 2),
-                            nn.ReLU(),
-                            nn.Conv2d(32, 64, 2),
-                            nn.ReLU(),
-                            nn.Flatten(1),
-                            nn.Linear(69696, 512),
-                            nn.ReLU(),
-                            nn.Linear(512, action_dim),
-                            nn.Softmax(-1)
-                        )
-        else:
-            self.actor = nn.Sequential(
-                            nn.Conv2d(state_dim, 16, 2),
-                            nn.ReLU(),
-                            nn.MaxPool2d(2),
-                            nn.Conv2d(16, 32, 2),
-                            nn.ReLU(),
-                            nn.Conv2d(32, 64, 2),
-                            nn.ReLU(),
-                            nn.Flatten(1),
-                            nn.Linear(64, 512),
-                            nn.ReLU(),
-                            nn.Linear(512, action_dim),
-                            nn.Softmax(-1)
-                        )
-        # critic
-        self.critic = nn.Sequential(
-                            nn.Conv2d(state_dim, 16, 2),
-                            nn.ReLU(),
-                            nn.MaxPool2d(2),
-                            nn.Conv2d(16, 32, 2),
-                            nn.ReLU(),
-                            nn.Conv2d(32, 64, 2),
-                            nn.ReLU(),
-                            nn.Flatten(1),
-                            nn.Linear(64, 512),
-                            nn.ReLU(),
-                            nn.Linear(512, 1)
-                        )
         
+        # actor conv layers
+        self.actor_conv1 = nn.Conv2d(state_dim, 16, 2)
+        self.actor_conv2 = nn.Conv2d(16, 32, 2)
+        self.actor_conv3 = nn.Conv2d(32, 64, 2)
+        
+        # actor linear layers
+        self.actor_fc1 = nn.Linear(1025, 512)  # Add +1 for the scalar input
+        self.actor_fc2 = nn.Linear(512, action_dim)
+        
+        # critic conv layers
+        self.critic_conv1 = nn.Conv2d(state_dim, 16, 2)
+        self.critic_conv2 = nn.Conv2d(16, 32, 2)
+        self.critic_conv3 = nn.Conv2d(32, 64, 2)
+        
+        # critic linear layers
+        self.critic_fc1 = nn.Linear(1025, 512)  # Add +1 for the scalar input
+        self.critic_fc2 = nn.Linear(512, 1)
+
     def set_action_std(self, new_action_std):
         if self.has_continuous_action_space:
             self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(device)
@@ -112,42 +90,58 @@ class ActorCritic(nn.Module):
             print("WARNING : Calling ActorCritic::set_action_std() on discrete action space policy")
             print("--------------------------------------------------------------------------------------------")
 
-    def forward(self):
+    def forward(self, state, scalar):
         raise NotImplementedError
     
-    def act(self, state):
-        if self.has_continuous_action_space:
-            action_mean = self.actor(state)
-            cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-            dist = MultivariateNormal(action_mean, cov_mat)
-        else:
-            action_probs = self.actor(state)[0]
-            dist = Categorical(action_probs)
+    def act(self, state, scalar):
+        # actor
+        x = F.relu(self.actor_conv1(state))
+        x = F.relu(self.actor_conv2(x))
+        x = F.relu(self.actor_conv3(x))
+        x = torch.flatten(x, 1)  # Flatten the output for the linear layer
+        scalar = scalar.view(-1, 1)  # Reshape scalar to [batch_size, 1] if it's not already
+        x = torch.cat((x, scalar), 1)  # Concatenate the scalar with the flattened conv output
+        x = F.relu(self.actor_fc1(x))
+        action_probs = F.softmax(self.actor_fc2(x), dim=-1)[0]
 
+        dist = Categorical(action_probs)
         action = dist.sample()
         action_logprob = dist.log_prob(action)
-        state_val = self.critic(state)
 
-        return action.detach(), action_logprob.detach(), state_val.detach()
+        # critic
+        y = F.relu(self.critic_conv1(state))
+        y = F.relu(self.critic_conv2(y))
+        y = F.relu(self.critic_conv3(y))
+        y = torch.flatten(y, 1)  # Flatten the output for the linear layer
+        y = torch.cat((y, scalar), 1)  # Concatenate the scalar with the flattened conv output
+        y = F.relu(self.critic_fc1(y))
+        state_values = self.critic_fc2(y)
+
+        return action.detach(), action_logprob.detach(), state_values.detach()
     
-    def evaluate(self, state, action):
-
-        if self.has_continuous_action_space:
-            action_mean = self.actor(state)
-            
-            action_var = self.action_var.expand_as(action_mean)
-            cov_mat = torch.diag_embed(action_var).to(device)
-            dist = MultivariateNormal(action_mean, cov_mat)
-            
-            # For Single Action Environments.
-            if self.action_dim == 1:
-                action = action.reshape(-1, self.action_dim)
-        else:
-            action_probs = self.actor(state)
-            dist = Categorical(action_probs)
+    def evaluate(self, state, action, scalar):
+        # actor
+        x = F.relu(self.actor_conv1(state))
+        x = F.relu(self.actor_conv2(x))
+        x = F.relu(self.actor_conv3(x))
+        x = torch.flatten(x, 1)  # Flatten the output for the linear layer
+        scalar = scalar.view(-1, 1)  # Reshape scalar to [batch_size, 1] if it's not already
+        x = torch.cat((x, scalar), 1)  # Concatenate the scalar with the flattened conv output
+        x = F.relu(self.actor_fc1(x))
+        action_probs = F.softmax(self.actor_fc2(x), dim=-1)
+        
+        dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
-        state_values = self.critic(state)
+
+        # critic
+        y = F.relu(self.critic_conv1(state))
+        y = F.relu(self.critic_conv2(y))
+        y = F.relu(self.critic_conv3(y))
+        y = torch.flatten(y, 1)  # Flatten the output for the linear layer
+        y = torch.cat((y, scalar), 1)  # Concatenate the scalar with the flattened conv output
+        y = F.relu(self.critic_fc1(y))
+        state_values = self.critic_fc2(y)
         
         return action_logprobs, state_values, dist_entropy
 
@@ -160,6 +154,15 @@ class PPO:
         if has_continuous_action_space:
             self.action_std = action_std_init
 
+        # self.feature_queue = deque(maxlen=4)
+        
+        # blank1 = self.preprocess(np.zeros((72,72,3)))
+        # blank2 = self.preprocess(np.zeros((72,72,3)))
+        # blank3 = self.preprocess(np.zeros((72,72,3)))
+        # self.feature_queue.append(blank1)
+        # self.feature_queue.append(blank2)
+        # self.feature_queue.append(blank3)
+
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
@@ -167,11 +170,7 @@ class PPO:
         self.buffer = RolloutBuffer()
 
         self.policy = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
-        self.optimizer = torch.optim.Adam([
-                        {'params': self.policy.actor.parameters(), 'lr': lr_actor},
-                        {'params': self.policy.critic.parameters(), 'lr': lr_critic}
-                    ])
-
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr_actor)
         self.policy_old = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
         
@@ -203,30 +202,19 @@ class PPO:
             print("WARNING : Calling PPO::decay_action_std() on discrete action space policy")
         print("--------------------------------------------------------------------------------------------")
 
-    def select_action(self, state):
+    def select_action(self, state, direction):
+        with torch.no_grad():
+            state = self.preprocess(state).to(device)
+            direction = torch.tensor(direction, dtype=torch.float).unsqueeze(0).to(device)
+            action, action_logprob, state_val = self.policy_old.act(state, direction)
+        
+        self.buffer.states.append(state)
+        self.buffer.direction.append(direction)
+        self.buffer.actions.append(action)
+        self.buffer.logprobs.append(action_logprob)
+        self.buffer.state_values.append(state_val)
 
-        if self.has_continuous_action_space:
-            with torch.no_grad():
-                state = torch.FloatTensor(state).to(device)
-                action, action_logprob, state_val = self.policy_old.act(state)
-
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-            self.buffer.state_values.append(state_val)
-
-            return action.detach().cpu().numpy().flatten()
-        else:
-            with torch.no_grad():
-                state = self.preprocess(state).to(device)
-                action, action_logprob, state_val = self.policy_old.act(state)
-            
-            self.buffer.states.append(state)
-            self.buffer.actions.append(action)
-            self.buffer.logprobs.append(action_logprob)
-            self.buffer.state_values.append(state_val)
-
-            return action.item()
+        return action.item()
 
     def update(self):
         # Monte Carlo estimate of returns
@@ -244,6 +232,7 @@ class PPO:
 
         # convert list to tensor
         old_states = torch.squeeze(torch.stack(self.buffer.states, dim=0)).detach().to(device)
+        old_direction = torch.squeeze(torch.stack(self.buffer.direction, dim=0)).detach().to(device)
         old_actions = torch.squeeze(torch.stack(self.buffer.actions, dim=0)).detach().to(device)
         old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs, dim=0)).detach().to(device)
         old_state_values = torch.squeeze(torch.stack(self.buffer.state_values, dim=0)).detach().to(device)
@@ -255,7 +244,7 @@ class PPO:
         for _ in range(self.K_epochs):
 
             # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
+            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions, old_direction)
 
             # match state_values tensor dimensions with rewards tensor
             state_values = torch.squeeze(state_values)
@@ -291,8 +280,10 @@ class PPO:
         self.policy_old.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         self.policy.load_state_dict(torch.load(checkpoint_path, map_location=lambda storage, loc: storage))
         
-    def preprocess(self, x):
-        x = torch.from_numpy(x).float() # / 255.0
+    def preprocess(self, x, invert=False):
+        if invert:
+            x = (255 - x)
+        x = torch.from_numpy(x).float()
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)
         else:
