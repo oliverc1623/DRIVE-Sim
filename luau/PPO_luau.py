@@ -89,7 +89,9 @@ class ActorCritic(nn.Module):
                         nn.ReLU(),
                         nn.Linear(256, 512),
                         nn.ReLU(),
-                        nn.Linear(512, action_dim),
+                        nn.Linear(512, 1024),
+                        nn.ReLU(),
+                        nn.Linear(1024, action_dim),
                         nn.Softmax(-1)
                     )
         # critic
@@ -100,7 +102,9 @@ class ActorCritic(nn.Module):
                             nn.ReLU(),
                             nn.Linear(256, 512),
                             nn.ReLU(),
-                            nn.Linear(512, 1)
+                            nn.Linear(512, 1024),
+                            nn.ReLU(),
+                            nn.Linear(1024, 1)
                         )
         
     def set_action_std(self, new_action_std):
@@ -139,7 +143,7 @@ class PPO:
         self.main = Encoder(latent_size=latent_size).to(device)
 
         # saved checkpoints could contain extra weights such as linear_logsigma 
-        weights = torch.load("../../LUSR/checkpoints/encoder2.pt", map_location=torch.device('cpu'))
+        weights = torch.load("../../LUSR/checkpoints/encoder3.pt", map_location=torch.device('cpu'))
         for k in list(weights.keys()):
             if k not in self.main.state_dict().keys():
                 del weights[k]
