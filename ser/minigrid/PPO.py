@@ -70,7 +70,7 @@ class ActorCritic(nn.Module):
         self.actor_conv3 = nn.Conv2d(32, 64, 2)
         
         # actor linear layers
-        self.actor_fc1 = nn.Linear(1025, 512)  # Add +1 for the scalar input
+        self.actor_fc1 = nn.Linear(304705, 512)  # Add +1 for the scalar input
         self.actor_fc2 = nn.Linear(512, action_dim)
         
         # critic conv layers
@@ -79,7 +79,7 @@ class ActorCritic(nn.Module):
         self.critic_conv3 = nn.Conv2d(32, 64, 2)
         
         # critic linear layers
-        self.critic_fc1 = nn.Linear(1025, 512)  # Add +1 for the scalar input
+        self.critic_fc1 = nn.Linear(304705, 512)  # Add +1 for the scalar input
         self.critic_fc2 = nn.Linear(512, 1)
 
     def set_action_std(self, new_action_std):
@@ -283,7 +283,7 @@ class PPO:
     def preprocess(self, x, invert=False):
         if invert:
             x = (255 - x)
-        x = torch.from_numpy(x).float()
+        x = torch.from_numpy(x).float() / 255
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)
         else:
