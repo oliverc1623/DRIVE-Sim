@@ -15,7 +15,7 @@ def introspect(
     h = 0
     probability = introspection_decay**(max(0, t - burn_in))
     p = Bernoulli(probability).sample()
-    direction = torch.tensor(direction, dtype=torch.float).unsqueeze(0).to("cuda")
+    direction = torch.tensor(direction, dtype=torch.float).unsqueeze(0).to("cuda:0")
     if t > burn_in and p == 1:
         _, _, teacher_source_val = teacher_source_policy.act(state, direction)
         _, _, teacher_target_val = teacher_target_policy.act(state, direction)
