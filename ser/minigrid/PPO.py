@@ -70,7 +70,7 @@ class ActorCritic(nn.Module):
         self.actor_conv3 = nn.Conv2d(32, 64, 2)
         
         # actor linear layers
-        self.actor_fc1 = nn.Linear(304705, 512)  # Add +1 for the scalar input
+        self.actor_fc1 = nn.Linear(53825, 512)  # Add +1 for the scalar input
         self.actor_fc2 = nn.Linear(512, action_dim)
         
         # critic conv layers
@@ -79,7 +79,7 @@ class ActorCritic(nn.Module):
         self.critic_conv3 = nn.Conv2d(32, 64, 2)
         
         # critic linear layers
-        self.critic_fc1 = nn.Linear(304705, 512)  # Add +1 for the scalar input
+        self.critic_fc1 = nn.Linear(53825, 512)  # Add +1 for the scalar input
         self.critic_fc2 = nn.Linear(512, 1)
 
     def set_action_std(self, new_action_std):
@@ -96,6 +96,7 @@ class ActorCritic(nn.Module):
     def act(self, state, scalar):
         # actor
         x = F.relu(self.actor_conv1(state))
+        x = F.max_pool2d(x, 2)
         x = F.relu(self.actor_conv2(x))
         x = F.relu(self.actor_conv3(x))
         x = torch.flatten(x, 1)  # Flatten the output for the linear layer
@@ -110,6 +111,7 @@ class ActorCritic(nn.Module):
 
         # critic
         y = F.relu(self.critic_conv1(state))
+        y = F.max_pool2d(y, 2)
         y = F.relu(self.critic_conv2(y))
         y = F.relu(self.critic_conv3(y))
         y = torch.flatten(y, 1)  # Flatten the output for the linear layer
@@ -122,6 +124,7 @@ class ActorCritic(nn.Module):
     def evaluate(self, state, action, scalar):
         # actor
         x = F.relu(self.actor_conv1(state))
+        x = F.max_pool2d(x, 2)
         x = F.relu(self.actor_conv2(x))
         x = F.relu(self.actor_conv3(x))
         x = torch.flatten(x, 1)  # Flatten the output for the linear layer
@@ -136,6 +139,7 @@ class ActorCritic(nn.Module):
 
         # critic
         y = F.relu(self.critic_conv1(state))
+        y = F.max_pool2d(y, 2)
         y = F.relu(self.critic_conv2(y))
         y = F.relu(self.critic_conv3(y))
         y = torch.flatten(y, 1)  # Flatten the output for the linear layer
@@ -153,15 +157,6 @@ class PPO:
 
         if has_continuous_action_space:
             self.action_std = action_std_init
-
-        # self.feature_queue = deque(maxlen=4)
-        
-        # blank1 = self.preprocess(np.zeros((72,72,3)))
-        # blank2 = self.preprocess(np.zeros((72,72,3)))
-        # blank3 = self.preprocess(np.zeros((72,72,3)))
-        # self.feature_queue.append(blank1)
-        # self.feature_queue.append(blank2)
-        # self.feature_queue.append(blank3)
 
         self.gamma = gamma
         self.eps_clip = eps_clip
