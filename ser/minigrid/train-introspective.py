@@ -20,9 +20,9 @@ def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "LavaCrossingS9N1Student"
+    env_name = "DynamicObstaclesStudent"
 
-    size=9 # gridworld env size
+    size=8 # gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
     save_frames = False
@@ -52,12 +52,12 @@ def train():
     lr_actor = 0.0005       # learning rate for actor network
     lr_critic = 0.001       # learning rate for critic network
 
-    random_seed = 47         # set random seed if required (0 = no random seed)
+    random_seed = 1         # set random seed if required (0 = no random seed)
     #####################################################
 
     print("training environment name : " + env_name)
 
-    env = env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode="rgb_array") 
+    env = env = gym.make('MiniGrid-Dynamic-Obstacles-8x8-v0', render_mode="rgb_array") 
     env = RGBImgObsWrapper(env)
     print(f"Gridworld size: {env.max_steps}")
 
@@ -149,8 +149,8 @@ def train():
     student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=False)
     teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=True)
     # TODO: we need to fine-tune a copy 
-    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/Empty8x8Teacher/PPO_Empty8x8Teacher_46_0.pth"))
-    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Empty8x8Teacher/PPO_Empty8x8Teacher_46_0.pth"))
+    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/Empty8x8Teacher/PPO_Empty8x8Teacher_1_0.pth"))
+    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Empty8x8Teacher/PPO_Empty8x8Teacher_1_0.pth"))
 
 
     # track total training time
@@ -195,7 +195,7 @@ def train():
                 np.random.seed(random_seed)
 
             # select action with policy
-            h = introspect(teacher_ppo_agent.preprocess(state, invert=False), direction, teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.9)
+            h = introspect(teacher_ppo_agent.preprocess(state, invert=False), direction, teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.45)
             if h:
                 action, teacher_direction, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state, direction)
                 student_ppo_agent.buffer.actions.append(action)
@@ -227,8 +227,6 @@ def train():
                 teacher_correction, student_correction = correct(student_ppo_agent.buffer, student_ppo_agent.policy_old, teacher_ppo_agent.policy_old)
                 teacher_ppo_agent.update_critic(teacher_correction, student_ppo_agent.buffer)
                 student_ppo_agent.update(student_correction)
-                # print(f"teacher policy old critic: {teacher_ppo_agent.policy_old.critic[10].weight[0].sum()}")
-                # print(f"teacher policy critic: {teacher_ppo_agent.policy.critic[10].weight[0].sum()}")
 
             # if continuous action space; then decay action std of ouput action distribution
             if has_continuous_action_space and time_step % action_std_decay_freq == 0:

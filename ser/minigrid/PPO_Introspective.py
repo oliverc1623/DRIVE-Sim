@@ -73,7 +73,7 @@ class ActorCritic(nn.Module):
         self.actor_conv3 = nn.Conv2d(32, 64, 2)
         
         # actor linear layers
-        self.actor_fc1 = nn.Linear(238145, 512)  # Add +1 for the scalar input
+        self.actor_fc1 = nn.Linear(53825, 512)  # Add +1 for the scalar input
         self.actor_fc2 = nn.Linear(512, action_dim)
         
         # critic conv layers
@@ -82,7 +82,7 @@ class ActorCritic(nn.Module):
         self.critic_conv3 = nn.Conv2d(32, 64, 2)
         
         # critic linear layers
-        self.critic_fc1 = nn.Linear(238145, 512)  # Add +1 for the scalar input
+        self.critic_fc1 = nn.Linear(53825, 512)  # Add +1 for the scalar input
         self.critic_fc2 = nn.Linear(512, 1)
 
     def set_action_std(self, new_action_std):
@@ -99,6 +99,7 @@ class ActorCritic(nn.Module):
     def act(self, state, scalar):
         # actor
         x = F.relu(self.actor_conv1(state))
+        x = F.max_pool2d(x, 2)
         x = F.relu(self.actor_conv2(x))
         x = F.relu(self.actor_conv3(x))
         x = torch.flatten(x, 1)  # Flatten the output for the linear layer
@@ -113,6 +114,7 @@ class ActorCritic(nn.Module):
 
         # critic
         y = F.relu(self.critic_conv1(state))
+        y = F.max_pool2d(y, 2)
         y = F.relu(self.critic_conv2(y))
         y = F.relu(self.critic_conv3(y))
         y = torch.flatten(y, 1)  # Flatten the output for the linear layer
@@ -125,6 +127,7 @@ class ActorCritic(nn.Module):
     def evaluate(self, state, action, scalar):
         # actor
         x = F.relu(self.actor_conv1(state))
+        x = F.max_pool2d(x, 2)
         x = F.relu(self.actor_conv2(x))
         x = F.relu(self.actor_conv3(x))
         x = torch.flatten(x, 1)  # Flatten the output for the linear layer
@@ -139,6 +142,7 @@ class ActorCritic(nn.Module):
 
         # critic
         y = F.relu(self.critic_conv1(state))
+        y = F.max_pool2d(y, 2)
         y = F.relu(self.critic_conv2(y))
         y = F.relu(self.critic_conv3(y))
         y = torch.flatten(y, 1)  # Flatten the output for the linear layer
@@ -147,6 +151,7 @@ class ActorCritic(nn.Module):
         state_values = self.critic_fc2(y)
         
         return action_logprobs, state_values, dist_entropy
+
 
 class PPOIntrospective:
     def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher = False, action_std_init=0.6):
@@ -276,7 +281,6 @@ class PPOIntrospective:
     def preprocess(self, x, invert):
         if invert:
             x = (255 - x)
-        x = cv2.resize(x, (64, 64))
         x = torch.from_numpy(x).float() / 255.0
         if len(x.shape) == 3:
             x = x.permute(2, 0, 1).unsqueeze(0).to(device)
