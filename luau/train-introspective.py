@@ -20,8 +20,11 @@ from introspective import introspect, correct
 
 device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
+
+################################### Initialize LUSR Encoder ###################################
+
 class Encoder(nn.Module):
-    def __init__(self, latent_size = 32, input_channel = 3):
+    def __init__(self, latent_size = 16, input_channel = 3):
         super(Encoder, self).__init__()
         self.latent_size = latent_size
         self.main = nn.Sequential(
@@ -39,15 +42,12 @@ class Encoder(nn.Module):
         return mu
 
 main = Encoder(latent_size=64).to(device)
-weights = torch.load("../../LUSR/checkpoints/encoder2.pt", map_location=torch.device('cpu'))
+weights = torch.load("../../LUSR/checkpoints/encoder6_ls_64.pt", map_location=torch.device('cpu'))
 for k in list(weights.keys()):
     if k not in main.state_dict().keys():
         del weights[k]
 main.load_state_dict(weights)
 print("Loaded Weights")
-
-# stacked buffer
-feature_queue = deque(maxlen=4)
 
 def preprocess(x, invert=False):
     if invert:
@@ -58,28 +58,23 @@ def preprocess(x, invert=False):
     else:
         x = x.permute(0, 3, 1, 2).to(device)
     feature = main(x.float())
-    feature_queue.append(feature)
-    stacked_features = torch.cat(list(feature_queue), 1)
-    return stacked_features
+    return feature
 
-preprocess(np.zeros((64,64,3)))
-preprocess(np.zeros((64,64,3)))
-preprocess(np.zeros((64,64,3)))
 
 ################################### Training ###################################
 def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "LavaCrossingS9N1StudentVAE"
+    env_name = "DynamicObstaclesStudentVAE"
 
-    size=9 #gridworld env size
+    size=8 #gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
     save_frames = False
 
     max_ep_len = 4 * size**2                   # max timesteps in one episode
-    max_training_timesteps = int(1e7)   # break training loop if timeteps > max_training_timesteps
+    max_training_timesteps = int(1e6)   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 5        # print avg reward in the interval (in num timesteps)
     log_freq = max_ep_len * 2           # log avg reward in the interval (in num timesteps)
@@ -103,12 +98,12 @@ def train():
     lr_actor = 0.0005       # learning rate for actor network
     lr_critic = 0.001       # learning rate for critic network
 
-    random_seed = 46         # set random seed if required (0 = no random seed)
+    random_seed = 47         # set random seed if required (0 = no random seed)
     #####################################################
 
     print("training environment name : " + env_name)
 
-    env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode="rgb_array")
+    env = gym.make('MiniGrid-Dynamic-Obstacles-8x8-v0', render_mode="rgb_array")
     print(f"Gridworld size: {env.max_steps}")
     env = RGBImgObsWrapper(env)
 
@@ -145,7 +140,7 @@ def train():
     #####################################################
 
     ################### checkpointing ###################
-    run_num_pretrained = 4      #### change this to prevent overwriting weights in same env_name folder
+    run_num_pretrained = 0      #### change this to prevent overwriting weights in same env_name folder
 
     directory = "PPO_preTrained"
     if not os.path.exists(directory):
@@ -196,12 +191,10 @@ def train():
     ################# training procedure ################
 
     # initialize a PPO agent
-    student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=False)
-    
-    teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher=True)
-    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/Empty8x8TeacherVAE/PPO_Empty8x8TeacherVAE_6_2.pth"))
-    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Empty8x8TeacherVAE/PPO_Empty8x8TeacherVAE_6_2.pth"))
-
+    student_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, latent_size=64)
+    teacher_ppo_agent = PPOIntrospective(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, latent_size=64)
+    teacher_ppo_agent.policy.load_state_dict(torch.load("PPO_preTrained/Empty8x8TeacherVAE/PPO_Empty8x8TeacherVAE_1989_5.pth"))
+    teacher_ppo_agent.policy_old.load_state_dict(torch.load("PPO_preTrained/Empty8x8TeacherVAE/PPO_Empty8x8TeacherVAE_1989_5.pth"))
 
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -229,6 +222,7 @@ def train():
     while time_step <= max_training_timesteps:
 
         state, _ = env.reset()
+        direction = state["direction"]
         state = state["image"]
         current_ep_reward = 0
         current_advice_given = 0
@@ -244,17 +238,19 @@ def train():
 
             # select action with policy
             state = preprocess(state, False)
-            h = introspect(state, teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.15)
+            h = introspect(state, direction, teacher_ppo_agent.policy_old, teacher_ppo_agent.policy, time_step, inspection_threshold=0.45)
             if h:
-                action, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state)
+                action, teacher_direction, teacher_state, teacher_action_logprob, teacher_state_val = teacher_ppo_agent.select_action(state, direction)
                 student_ppo_agent.buffer.actions.append(action)
+                student_ppo_agent.buffer.direction.append(teacher_direction)
                 student_ppo_agent.buffer.states.append(teacher_state)
                 student_ppo_agent.buffer.logprobs.append(teacher_action_logprob)
                 student_ppo_agent.buffer.state_values.append(teacher_state_val)
                 current_advice_given += 1
             else:
-                action, _, _, _ = student_ppo_agent.select_action(state)
+                action, _, _, _, _ = student_ppo_agent.select_action(state, direction)
             state, reward, done, truncated, info = env.step(action.item())
+            direction = state["direction"]
             state = state["image"]
 
             # saving reward and is_terminals
@@ -262,12 +258,12 @@ def train():
             student_ppo_agent.buffer.is_terminals.append(done)
             student_ppo_agent.buffer.indicators.append(h)
 
+            time_step +=1
+            current_ep_reward += reward
+
             if save_frames:
                 img = env.render()
                 plt.imsave(f"frames/frame_{time_step:06}.png", img)
-
-            time_step +=1
-            current_ep_reward += reward
 
             # update PPO agent
             if time_step % update_timestep == 0:

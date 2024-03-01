@@ -30,16 +30,18 @@ print("=========================================================================
 class RolloutBuffer:
     def __init__(self):
         self.actions = []
+        self.direction = []
         self.states = []
         self.logprobs = []
         self.rewards = []
         self.state_values = []
         self.is_terminals = []
         self.indicators = []
-    
+
     def clear(self):
         del self.actions[:]
         del self.states[:]
+        del self.direction[:]
         del self.logprobs[:]
         del self.rewards[:]
         del self.state_values[:]
@@ -65,27 +67,17 @@ class ActorCritic(nn.Module):
         
         self.has_continuous_action_space = has_continuous_action_space
 
-        # actor
-        self.actor = nn.Sequential(
-                        nn.Linear(latent_size*4, 64),
-                        nn.ReLU(),
-                        nn.Linear(64, 256),
-                        nn.ReLU(),
-                        nn.Linear(256, 512),
-                        nn.ReLU(),
-                        nn.Linear(512, action_dim),
-                        nn.Softmax(-1)
-                    )
-        # critic
-        self.critic = nn.Sequential(
-                            nn.Linear(latent_size*4, 64),
-                            nn.ReLU(),
-                            nn.Linear(64, 256),
-                            nn.ReLU(),
-                            nn.Linear(256, 512),
-                            nn.ReLU(),
-                            nn.Linear(512, 1)
-                        )
+        # actor linear layers
+        self.actor_fc1 = nn.Linear(latent_size + 1, 512)  # Add +1 for the scalar input
+        self.actor_fc2 = nn.Linear(512, 1024)
+        self.actor_fc3 = nn.Linear(1024, 512)
+        self.actor_fc4 = nn.Linear(512, action_dim)
+
+        # critic linear layers
+        self.critic_fc1 = nn.Linear(latent_size + 1, 512)  # Add +1 for the scalar input
+        self.critic_fc2 = nn.Linear(512, 1024)
+        self.critic_fc3 = nn.Linear(1024, 512)
+        self.critic_fc4 = nn.Linear(512, 1)
         
     def set_action_std(self, new_action_std):
         if self.has_continuous_action_space:
@@ -98,27 +90,49 @@ class ActorCritic(nn.Module):
     def forward(self):
         raise NotImplementedError
     
-    def act(self, features):        
-        action_probs = self.actor(features)[0]
+    def act(self, features, scalar):
+        scalar = scalar.view(-1, 1)  # Reshape scalar to [batch_size, 1] if it's not already
+        x = torch.cat((features, scalar), 1)  # Concatenate the scalar with the flattened conv output
+        x = F.relu(self.actor_fc1(x))
+        x = F.relu(self.actor_fc2(x))
+        x = F.relu(self.actor_fc3(x))
+        action_probs = F.softmax(self.actor_fc4(x), dim=-1)[0]
+
         dist = Categorical(action_probs)
         action = dist.sample()
         action_logprob = dist.log_prob(action)
-        state_val = self.critic(features)
 
-        return action.detach(), action_logprob.detach(), state_val.detach()
+        y = torch.cat((features, scalar), 1)
+        y = F.relu(self.critic_fc1(y))
+        y = F.relu(self.critic_fc2(y))
+        y = F.relu(self.critic_fc3(y))
+        state_values = self.critic_fc4(y)
+
+        return action.detach(), action_logprob.detach(), state_values.detach()
     
-    def evaluate(self, features, action):        
-        action_probs = self.actor(features)
+    def evaluate(self, features, action, scalar):        
+        scalar = scalar.view(-1, 1)  # Reshape scalar to [batch_size, 1] if it's not already
+        x = torch.cat((features, scalar), 1)  # Concatenate the scalar with the flattened conv output
+        x = F.relu(self.actor_fc1(x))
+        x = F.relu(self.actor_fc2(x))
+        x = F.relu(self.actor_fc3(x))
+        action_probs = F.softmax(self.actor_fc4(x), dim=-1)
+
         dist = Categorical(action_probs)
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
-        state_values = self.critic(features)
+
+        y = torch.cat((features, scalar), 1)
+        y = F.relu(self.critic_fc1(y))
+        y = F.relu(self.critic_fc2(y))
+        y = F.relu(self.critic_fc3(y))
+        state_values = self.critic_fc4(y)
         
         return action_logprobs, state_values, dist_entropy
 
 
 class PPOIntrospective:
-    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher = False, action_std_init=0.6, latent_size=64):
+    def __init__(self, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, teacher = False, action_std_init=0.6, latent_size=16):
 
         self.has_continuous_action_space = has_continuous_action_space
 
@@ -132,17 +146,7 @@ class PPOIntrospective:
         self.buffer = RolloutBuffer()
 
         self.policy = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init, latent_size).to(device)
-
-        if teacher:
-            self.optimizer = torch.optim.Adam([
-                {'params': self.policy.critic.parameters(), 'lr': lr_critic}
-            ])
-        else:
-            self.optimizer = torch.optim.Adam([
-                {'params': self.policy.actor.parameters(), 'lr': lr_actor},
-                {'params': self.policy.critic.parameters(), 'lr': lr_critic}
-            ])
-
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=lr_actor)
         self.policy_old = ActorCritic(state_dim, action_dim, has_continuous_action_space, action_std_init, latent_size).to(device)
         self.policy_old.load_state_dict(self.policy.state_dict())
 
@@ -174,16 +178,18 @@ class PPOIntrospective:
             print("WARNING : Calling PPO::decay_action_std() on discrete action space policy")
         print("--------------------------------------------------------------------------------------------")
 
-    def select_action(self, state):
+    def select_action(self, state, scalar):
         with torch.no_grad():
-            action, action_logprob, state_val = self.policy_old.act(state.detach())
+            direction = torch.tensor(scalar, dtype=torch.float).unsqueeze(0).to(device)
+            action, action_logprob, state_val = self.policy_old.act(state.detach(), direction)
 
         self.buffer.states.append(state)
+        self.buffer.direction.append(direction)
         self.buffer.actions.append(action)
         self.buffer.logprobs.append(action_logprob)
         self.buffer.state_values.append(state_val)
 
-        return action, state, action_logprob, state_val
+        return action, direction, state, action_logprob, state_val
 
     def update(self, correction):
         # Monte Carlo estimate of returns
@@ -192,7 +198,7 @@ class PPOIntrospective:
         for reward, is_terminal in zip(reversed(self.buffer.rewards), reversed(self.buffer.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward * 0.95)
+            discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
             
         # Normalizing the rewards
@@ -201,6 +207,7 @@ class PPOIntrospective:
 
         # convert list to tensor
         old_states = torch.squeeze(torch.stack(self.buffer.states, dim=0)).detach().to(device)
+        old_direction = torch.squeeze(torch.stack(self.buffer.direction, dim=0)).detach().to(device)
         old_actions = torch.squeeze(torch.stack(self.buffer.actions, dim=0)).detach().to(device)
         old_logprobs = torch.squeeze(torch.stack(self.buffer.logprobs, dim=0)).detach().to(device)
         old_state_values = torch.squeeze(torch.stack(self.buffer.state_values, dim=0)).detach().to(device)
@@ -212,11 +219,11 @@ class PPOIntrospective:
         for _ in range(self.K_epochs):
 
             # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
+            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions, old_direction)
 
             # match state_values tensor dimensions with rewards tensor
             state_values = torch.squeeze(state_values)
-            
+
             # Finding the ratio (pi_theta / pi_theta__old)
             ratios = torch.exp(logprobs - old_logprobs.detach()) * correction.to(device) 
 
@@ -226,10 +233,9 @@ class PPOIntrospective:
 
             # VF loss
             vf_loss = self.MseLoss(state_values, rewards)
-            
+
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 1.0 * vf_loss - 0.01 * dist_entropy
-            # print(f"Student PPO loss: {loss.mean()}")
+            loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
             
             # take gradient step
             self.optimizer.zero_grad()
@@ -257,7 +263,7 @@ class PPOIntrospective:
         for reward, is_terminal in zip(reversed(rolloutbuffer.rewards), reversed(rolloutbuffer.is_terminals)):
             if is_terminal:
                 discounted_reward = 0
-            discounted_reward = reward + (self.gamma * discounted_reward * 0.95)
+            discounted_reward = reward + (self.gamma * discounted_reward)
             rewards.insert(0, discounted_reward)
 
         # Normalizing the rewards
@@ -266,6 +272,7 @@ class PPOIntrospective:
 
         # convert list to tensor
         old_states = torch.squeeze(torch.stack(rolloutbuffer.states, dim=0)).detach().to(device)
+        old_direction = torch.squeeze(torch.stack(rolloutbuffer.direction, dim=0)).detach().to(device)
         old_actions = torch.squeeze(torch.stack(rolloutbuffer.actions, dim=0)).detach().to(device)
         old_logprobs = torch.squeeze(torch.stack(rolloutbuffer.logprobs, dim=0)).detach().to(device)
         old_state_values = torch.squeeze(torch.stack(rolloutbuffer.state_values, dim=0)).detach().to(device)
@@ -277,7 +284,7 @@ class PPOIntrospective:
         for _ in range(self.K_epochs):
 
             # Evaluating old actions and values
-            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
+            logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions, old_direction)
 
             # match state_values tensor dimensions with rewards tensor
             state_values = torch.squeeze(state_values)
@@ -293,8 +300,7 @@ class PPOIntrospective:
             vf_loss = self.MseLoss(state_values, rewards)
             
             # final loss of clipped objective PPO
-            loss = -torch.min(surr1, surr2) + 1.0 * vf_loss - 0.01 * dist_entropy
-            # print(f"teacher PPO loss: {loss.mean()}")
+            loss = -torch.min(surr1, surr2) + 0.5 * vf_loss - 0.01 * dist_entropy
             
             # take gradient step
             self.optimizer.zero_grad()
