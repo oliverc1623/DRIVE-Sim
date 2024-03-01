@@ -18,15 +18,15 @@ def train():
     print("============================================================================================")
 
     ####### initialize environment hyperparameters ######
-    env_name = "LavaCrossingS9N1BaselineVAE"
+    env_name = "Empty8x8TeacherVAE"
 
-    size=9 # gridworld env size
+    size=8 # gridworld env size
 
     has_continuous_action_space = False  # continuous action space; else discrete
     save_frames = False
 
     max_ep_len = 4 * size**2                   # max timesteps in one episode
-    max_training_timesteps = int(1e7)   # break training loop if timeteps > max_training_timesteps
+    max_training_timesteps = int(1e6)   # break training loop if timeteps > max_training_timesteps
 
     print_freq = max_ep_len * 5        # print avg reward in the interval (in num timesteps)
     log_freq = max_ep_len * 2           # log avg reward in the interval (in num timesteps)
@@ -50,13 +50,12 @@ def train():
     lr_actor = 0.0005     # learning rate for actor network
     lr_critic = 0.001       # learning rate for critic network
 
-    random_seed = 96         # set random seed if required (0 = no random seed)
+    random_seed = 1989         # set random seed if required (0 = no random seed)
     #####################################################
 
     print("training environment name : " + env_name)
 
-    env = gym.make('MiniGrid-LavaCrossingS9N1-v0', render_mode="rgb_array")
-    # gym.make('MiniGrid-Empty-8x8-v0', render_mode="rgb_array") #
+    env = gym.make('MiniGrid-Empty-8x8-v0', render_mode="rgb_array")
     env = RGBImgObsWrapper(env) 
     print(f"Gridworld size: {env.max_steps}")
 
@@ -67,7 +66,7 @@ def train():
     if has_continuous_action_space:
         action_dim = env.action_space.shape[0]
     else:
-        action_dim = env.action_space.n
+        action_dim = 3 # env.action_space.n
 
     ###################### logging ######################
 
@@ -145,7 +144,7 @@ def train():
     ################# training procedure ################
 
     # initialize a PPO agent
-    ppo_agent = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std)
+    ppo_agent = PPO(state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std, latent_size=64)
 
     # track total training time
     start_time = datetime.now().replace(microsecond=0)
@@ -171,6 +170,7 @@ def train():
     while time_step <= max_training_timesteps:
 
         state, _ = env.reset()
+        direction = state["direction"]
         state = state["image"]
         current_ep_reward = 0
 
@@ -185,8 +185,9 @@ def train():
 
             # select action with policy
 
-            action = ppo_agent.select_action(state)
+            action = ppo_agent.select_action(state, direction)
             state, reward, done, truncated, info = env.step(action)
+            direction = state["direction"]
             state = state["image"]
 
             # saving reward and is_terminals
