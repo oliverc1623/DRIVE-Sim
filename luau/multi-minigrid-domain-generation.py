@@ -109,12 +109,12 @@ def yellow_tint(image, factor=50):
 
 def main():
     env = gym.make('MiniGrid-Empty-8x8-v0', render_mode="rgb_array")
-    env = RGBImgObsWrapper(env)
+    env = RGBImgPartialObsWrapper(env)
     obs, info = env.reset() # This now produces an RGB tensor only
     obs = obs["image"]
 
     ################## Original Domain ##################
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -126,7 +126,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/0.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -138,7 +138,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/1.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -150,7 +150,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/2.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -162,7 +162,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/3.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -174,7 +174,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/4.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -186,7 +186,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/5.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -198,7 +198,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/6.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -210,7 +210,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/7.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -222,7 +222,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid1/8.npz", obs=data_array)
     
-    data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -236,7 +236,7 @@ def main():
 
 
     ################## Green Domain ##################
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -249,7 +249,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/0.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -262,7 +262,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/1.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -275,7 +275,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/2.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -288,7 +288,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/3.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -301,7 +301,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/4.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -314,7 +314,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/5.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -327,7 +327,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/6.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -340,7 +340,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/7.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -353,7 +353,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid2/8.npz", obs=red_data_array)
     
-    red_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    red_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -368,7 +368,7 @@ def main():
 
     ################## Red Domain ##################
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -381,7 +381,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/0.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -394,7 +394,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/1.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -407,7 +407,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/2.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -420,7 +420,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/3.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -433,7 +433,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/4.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -446,7 +446,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/5.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -459,7 +459,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/6.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -472,7 +472,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/7.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -485,7 +485,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid3/8.npz", obs=cyan_data_array)
     
-    cyan_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    cyan_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -500,7 +500,7 @@ def main():
 
     ################## Blue Domain ##################
 
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -513,7 +513,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/0.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -526,7 +526,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/1.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -539,7 +539,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/2.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -552,7 +552,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/3.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -565,7 +565,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/4.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -578,7 +578,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/5.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -591,7 +591,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/6.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -604,7 +604,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/7.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -617,7 +617,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid4/8.npz", obs=pruple_data_array)
     
-    pruple_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    pruple_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(timestamps)):
@@ -631,7 +631,7 @@ def main():
     np.savez("data/minigrid8x8/grid4/9.npz", obs=pruple_data_array)
 
     ################## Green Domain ##################
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -644,7 +644,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid5/0.npz", obs=green_data_array)
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -657,7 +657,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid5/1.npz", obs=green_data_array)
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -670,7 +670,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid5/2.npz", obs=green_data_array)
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -683,7 +683,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid5/3.npz", obs=green_data_array)
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -696,7 +696,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid5/4.npz", obs=green_data_array)
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -709,7 +709,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid5/5.npz", obs=green_data_array)
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -723,7 +723,7 @@ def main():
     np.savez("data/minigrid8x8/grid5/6.npz", obs=green_data_array)
     
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -736,7 +736,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid5/7.npz", obs=green_data_array)
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
@@ -749,7 +749,7 @@ def main():
             obs, info = env.reset()
     np.savez("data/minigrid8x8/grid5/8.npz", obs=green_data_array)
     
-    green_data_array = np.zeros((10_000, 64, 64, 3)).astype(np.uint8)
+    green_data_array = np.zeros((10_000, 56, 56, 3)).astype(np.uint8)
     timestamps = 10_000
     obs, info = env.reset()
     for t in tqdm(range(1, timestamps + 1)):
