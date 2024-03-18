@@ -10,8 +10,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))
 from CustomCNN import CustomCNN
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('SeqTransformer.py'))))
 from SeqTransformer import SeqTransformer
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('LoggingCallback.py'))))
-from LoggingCallback import LoggingCallback
 
 # Standard Torch
 import copy
