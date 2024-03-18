@@ -1,34 +1,30 @@
 import os
-os.environ["DISPLAY"] = ":4"
+os.environ["DISPLAY"] = ":2"
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
-# local imports
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('VistaEnv.py'))))
 from VistaEnv import VistaEnv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))))
 from CustomCNN import CustomCNN
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('SeqTransformer.py'))))
-from SeqTransformer import SeqTransformer
-
-# Standard Torch
 import copy
 import time
-import torch
 
-# SB3
-from stable_baselines3 import SAC
+from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
-from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder, VecFrameStack
+from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 
-device = ("cuda:1" if torch.cuda.is_available() else "cpu")
+import torch
+
+device = ("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
-def make_env(rank: int, seed: int = 47):
+
+def make_env(rank: int, seed: int = 0):
     """
     Utility function for multiprocessed env.
 
@@ -66,19 +62,22 @@ def make_env(rank: int, seed: int = 47):
         ]
         trace_paths = [os.path.join(trace_root, p) for p in trace_path]
         display_config = dict(road_buffer_size=1000, )
-        preprocess_config = {"crop_roi": True,
-             "resize": True,
-             "grayscale": True,
-             "binary": False}
+        preprocess_config = {
+            "crop_roi": True,
+            "resize": True,
+            "grayscale": True,
+            "binary": False
+        }
         env = VistaEnv(trace_paths = trace_paths, 
                trace_config = trace_config,
                car_config = car_config,
                display_config = display_config,
                preprocess_config = preprocess_config,
                sensors_configs = [camera_config])
-        env.reset(seed=seed)
+        env.reset(seed=seed + rank)
         return env
     set_random_seed(seed)
+    time.sleep(1)
     return _init
 
 learning_configs = {
@@ -88,36 +87,17 @@ learning_configs = {
     "learning_rate": 0.0003
 }
 
-policy_kwargs = dict(
-    features_extractor_class=CustomCNN,
-)
-
 if __name__ == "__main__":
-    for i in range(4,5):
-        torch.cuda.empty_cache()
-        num_cpu = 8
-        vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-        vec_env = VecFrameStack(vec_env, n_stack=4)
-    
-        # Create log dir
-        log_dir = f"tmp_sac_gray{i}/"
-        os.makedirs(log_dir, exist_ok=True)
-        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
-
-        model = SAC(
-            "CnnPolicy",
-            vec_env,
-            buffer_size=250_000,
-            learning_rate = learning_configs['learning_rate'],
-            verbose=1,
-            device=device,
-        )
-        timesteps = learning_configs['total_timesteps']
-        model.learn(
-            total_timesteps=timesteps, 
-            progress_bar=True
-        )
-
-        # Save the agent
-        model.save(f"vista_stacked_naturecnn_backbone_trial{i}")
-  
+    torch.cuda.empty_cache()
+    num_cpu = 1
+    env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+    env = VecFrameStack(env, n_stack=4)
+    env.training = False
+    obs = env.reset()
+    model = PPO.load('ppo_trial4_naturecnn', env)
+    while True:
+        action, _states = model.predict(obs)
+        obs, rewards, dones, info = env.step(action)
+        env.render()
+        if dones:
+            obs = env.reset()

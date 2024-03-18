@@ -19,7 +19,7 @@ from stable_baselines3.common.utils import set_random_seed
 
 import torch
 
-device = ("cuda:1" if torch.cuda.is_available() else "cpu")
+device = ("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
@@ -62,8 +62,12 @@ def make_env(rank: int, seed: int = 0):
         ]
         trace_paths = [os.path.join(trace_root, p) for p in trace_path]
         display_config = dict(road_buffer_size=1000, )
-        preprocess_config = {"crop_roi": True}
-
+        preprocess_config = {
+            "crop_roi": True,
+            "resize": True,
+            "grayscale": True,
+            "binary": False
+        }
         env = VistaEnv(trace_paths = trace_paths, 
                trace_config = trace_config,
                car_config = car_config,
@@ -84,36 +88,30 @@ learning_configs = {
 }
 
 if __name__ == "__main__":
-    for i in range(4):
+    for i in range(3,5):
         torch.cuda.empty_cache()
-        num_cpu = 4 # Number of processes to use
+        num_cpu = 8 # Number of processes to use
         vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
         # Frame-stacking with 4 frames
-        # vec_env = VecFrameStack(vec_env, n_stack=4)
+        vec_env = VecFrameStack(vec_env, n_stack=4)
 
         # Create log dir
-        log_dir = f"tmp_no_stack_vista_trial{i}/"
+        log_dir = f"tmp_{i}/"
         os.makedirs(log_dir, exist_ok=True)
         vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
 
-        policy_kwargs = dict(
-            features_extractor_class=CustomCNN,
-            features_extractor_kwargs=dict(features_dim=256),
-        )
         model = PPO("CnnPolicy", 
                     vec_env, 
                     learning_rate=0.0003,
-                    n_steps=5,
-                    policy_kwargs=policy_kwargs, 
-                    verbose=2, 
+                    verbose=1, 
                     device=device
         )
         timesteps = learning_configs['total_timesteps']
         model.learn(
             total_timesteps=timesteps, 
-            # progress_bar=True
+            progress_bar=True
         )
 
         # Save the agent
-        model.save(f"vista_ppo_100k_mycnn_trial{i}")
+        model.save(f"ppo_trial{i}_naturecnn")
     
