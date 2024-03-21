@@ -161,6 +161,9 @@ class VistaMAEnv(gym.Env):
             'lookahead_road'], '\'lookahead_road\' in the first car config should be set to True'
 
         self._world: World = World(trace_paths, trace_config)
+        self._display = Display(self._world)
+        self._width, self._height = 0, 0
+        self.render_mode = "rgb_array"
         for i in range(n_agents):
             agent = self._world.spawn_agent(car_configs[i])
             for sensor_config in sensors_configs[i]:
