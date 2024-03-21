@@ -7,6 +7,8 @@ from shapely.geometry import box as Box
 from shapely import affinity
 import random 
 from skimage.transform import resize
+from skimage.color import rgb2gray
+from skimage.filters import threshold_otsu
 
 from vista import World
 from vista.entities.agents.Car import Car
@@ -164,64 +166,58 @@ class VistaMAEnv(gym.Env):
             for sensor_config in sensors_configs[i]:
                 sensor_type = sensor_config.pop('type')
                 if sensor_type == 'camera':
+                    self._width = sensor_config['size'][0]
+                    self._height = sensor_config['size'][1]
                     agent.spawn_camera(sensor_config)
                 else:
                     raise NotImplementedError(
                         f'Unrecognized sensor type {sensor_type}')
-
         if n_agents > 1:
             assert self.config[
                 'mesh_dir'] is not None, 'Specify mesh_dir if n_agents > 1'
             self._meshlib = MeshLib(self.config['mesh_dir'])
-
         self.set_seed(0)
-
-        self._preprocess_config = preprocess_config
-        self._is_seq = preprocess_config['seq']
-        if self._preprocess_config['crop_roi'] and not self._preprocess_config['seq']:
-            i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
-            self._width, self._height = i2-i1, j2-j1
-        else:
-            self._width = 128
-            self._height = 128
-
         self._distance = 0
         self._prev_xy = np.zeros((2, ))
         self._prev_yaw = 0.0
-
-        self.observation_space = spaces.Box(
-            low=0, high=255,
-            shape=(3, self._width, self._height), # change just for seq vit
-            dtype=np.uint8
-        )
-        self.action_space = spaces.Box(low=-1/5.0, high=1/5.0, shape=(1,), dtype=np.float32)
+        self._preprocess_config = preprocess_config
+        self._is_seq = preprocess_config['seq']
+        if self._preprocess_config['crop_roi']:
+            i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
+            self._width, self._height = i2-i1, j2-j1
+        if self._preprocess_config['resize']:
+            self._width = 128
+            self._height = 128
+        obs_shape = (3, self._width, self._height)
+        if self._preprocess_config['grayscale']:
+            obs_shape = (1, self._width, self._height)
+        else:
+            obs_shape = (3, self._width, self._height)
+        self.observation_space = spaces.Box(low=0, high=255,shape=obs_shape,dtype=np.uint8)
+        self.action_space = spaces.Box(low=np.array([-1/5.0, 1.0]), high=np.array([1/5.0, 40.0]), shape=(2,), dtype=np.float32)
 
     def _preprocess(self, image, seq=False):
-        # Extract ROI
+        # grayscale
+        if self._preprocess_config['grayscale']:
+            image = rgb2gray(image)
+            image = (image*255).astype('uint8')
+        # cropped ROI
         i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
-        obs = image[i1:i2, j1:j2]
-        if seq:
-            obs = resize(obs, (128, 128)) # for SeqVit
-            obs = (obs*255).round(0).astype(np.uint8)
-        return obs
+        image = image[i1:i2, j1:j2]
+        # resize
+        if self._preprocess_config['resize']:
+            image = resize(image, (128, 128), anti_aliasing=True)
+            image = (image*255).astype('uint8')
+        # binarize
+        if self._preprocess_config['binary']:
+            thresh = threshold_otsu(image)
+            image = image > thresh
+        image = np.expand_dims(image, axis=0)
+        return image
 
 
     def reset(self, seed=1, options=None) -> Dict:
-        """ Reset the environment. This involves regular world reset, randomly
-        initializing ado agent in the front of the ego agent, and resetting
-        the mesh library for all virtual agents.
-
-        Returns:
-            Dict: A dictionary with keys as agent IDs and values as observation
-            for each agent, which is also a dictionary with keys as sensor IDs
-            and values as sensory measurements.
-
-        """
         super().reset(seed=seed, options=options)
-        
-        # self._world.set_seed(seed)
-        self.set_seed(seed)
-
         # Reset world; all agents are initialized at the same pointer to the trace
         new_trace_index, new_segment_index, new_frame_index = \
             self.world.sample_new_location()
@@ -275,13 +271,10 @@ class VistaMAEnv(gym.Env):
         # observations = {_a.id: _a.observations for _a in self.world.agents}
         observations = self.ego_agent.observations
         observation = observations['camera_front']
-        observation = self._preprocess(observation, self._is_seq)
-        observation = np.transpose(observation, (2,0,1))
-
+        observation = self._preprocess(observation)
         self._distance = 0
         self._prev_xy = np.zeros((2, ))
         self._prev_yaw = 0.0
-
         return observation, info
 
 
@@ -318,7 +311,6 @@ class VistaMAEnv(gym.Env):
         observations = self.ego_agent.observations
         observation = observations['camera_front']
         observation = self._preprocess(observation)
-        observation = np.transpose(observation, (2,0,1))
 
         # Check terminal conditions
         dones = dict()
