@@ -16,6 +16,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
 import torch
 
@@ -88,11 +89,12 @@ learning_configs = {
 }
 
 if __name__ == "__main__":
-    for i in range(3,5):
+    # Stops training when the model reaches the maximum number of episodes
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=500, verbose=1)
+    for i in range(1,5):
         torch.cuda.empty_cache()
-        num_cpu = 8 # Number of processes to use
+        num_cpu = 8
         vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-        # Frame-stacking with 4 frames
         vec_env = VecFrameStack(vec_env, n_stack=4)
 
         # Create log dir
@@ -103,12 +105,14 @@ if __name__ == "__main__":
         model = PPO("CnnPolicy", 
                     vec_env, 
                     learning_rate=0.0003,
+                    n_steps=256,
                     verbose=1, 
                     device=device
         )
         timesteps = learning_configs['total_timesteps']
         model.learn(
             total_timesteps=timesteps, 
+            callback=callback_max_episodes,
             progress_bar=True
         )
 
