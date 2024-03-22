@@ -26,6 +26,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder, VecFrameStack, StackedObservations
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
 
 device = ("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -96,6 +97,7 @@ learning_configs = {
 }
 
 if __name__ == "__main__":
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=100, verbose=1)
     for i in range(1,5):
         torch.cuda.empty_cache()
         num_cpu = 8 # Number of processes to use
@@ -116,6 +118,7 @@ if __name__ == "__main__":
         timesteps = learning_configs['total_timesteps']
         model.learn(
             total_timesteps=timesteps, 
+            callback=callback_max_episodes,
             progress_bar=True
         )
         # Save the agent
