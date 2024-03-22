@@ -16,7 +16,7 @@ def default_terminal_condition(task, agent_id, **kwargs):
     """ An example definition of terminal condition. """
     agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
     def _check_out_of_lane():
-        road_half_width = agent.trace.road_width / 2. # 4 for training, 2 for eval
+        road_half_width = agent.trace.road_width / 2. 
         return np.abs(agent.relative_state.x) > road_half_width
     def _check_exceed_max_rot():
         maximal_rotation = np.pi / 10.
@@ -163,7 +163,7 @@ class VistaEnv(gym.Env):
 
     def reset(self, seed=1, options=None):
         super().reset(seed=seed, options=options)
-        self._world.set_seed(seed)
+        # self._world.set_seed(seed)
         self._world.reset({self._world.agents[0].id: initial_dynamics_fn})
         self._display.reset()
         agent = self._world.agents[0]
@@ -204,16 +204,17 @@ class VistaEnv(gym.Env):
         reward, _ = self.config['reward_fn'](self, agent.id, self._prev_yaw,
                                              **info_from_terminal_condition)
         current_xy = agent.ego_dynamics.numpy()[:2]
-        self._distance += np.linalg.norm(current_xy - self._prev_xy)
+        self._distance += 1 # np.linalg.norm(current_xy - self._prev_xy)
         self._prev_xy = current_xy
         self._prev_yaw = agent.ego_dynamics.numpy()[2]
         info['distance'] = self._distance
-        truncated = False
+        truncated=False
+        if self._distance > 500:
+            truncated = True
         return observation, reward, done, truncated, info
 
     def set_seed(self, seed) -> None:
         """ Set random seed.
-
         Args:
             seed (int): Random seed.
         """
