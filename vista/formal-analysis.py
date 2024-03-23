@@ -17,7 +17,7 @@ import numpy as np
 sns.set_theme(rc={'figure.figsize':(11.7,8.27)})
 
 
-# In[154]:
+# In[155]:
 
 
 log_dir = "ddpg/ddpg-tmp-trial4-lane-follow/"
@@ -110,10 +110,24 @@ td3_df4['Algorithm'] = 'TD3'
 td3_df = pd.concat([td3_df1[:100], td3_df2[:100], td3_df3[:100], td3_df4[:100]]).reset_index()
 
 
-# In[152]:
+# In[158]:
 
 
-combined_df = pd.concat([sac_df,ppo_df,a2c_df,td3_df])
+ddpg_df1 = getDataFrame('/mnt/persistent/lane-follow-ddpg/ddpg-tmp-trial1-lane-follow')
+ddpg_df1['Algorithm'] = 'DDPG'
+ddpg_df2 = getDataFrame('/mnt/persistent/lane-follow-ddpg/ddpg-tmp-trial2-lane-follow')
+ddpg_df2['Algorithm'] = 'DDPG'
+ddpg_df3 = getDataFrame('/mnt/persistent/lane-follow-ddpg/ddpg-tmp-trial3-lane-follow')
+ddpg_df3['Algorithm'] = 'DDPG'
+ddpg_df4 = getDataFrame('/mnt/persistent/lane-follow-ddpg/ddpg-tmp-trial4-lane-follow')
+ddpg_df4['Algorithm'] = 'DDPG'
+ddpg_df = pd.concat([ddpg_df1[:100], ddpg_df2[:100], ddpg_df3[:100], ddpg_df4[:100]]).reset_index()
+
+
+# In[159]:
+
+
+combined_df = pd.concat([sac_df,ppo_df,a2c_df,td3_df,ddpg_df])
 sns.lineplot(combined_df, x='Episode',y='Reward',hue='Algorithm')
 
 
