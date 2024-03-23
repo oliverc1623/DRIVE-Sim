@@ -24,6 +24,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder, VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
 device = ("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
@@ -94,7 +95,8 @@ policy_kwargs = dict(
 )
 
 if __name__ == "__main__":
-    for i in range(1,5):
+    for i in range(4,5):
+        callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=13, verbose=1)
         torch.cuda.empty_cache()
         num_cpu = 8
         vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
@@ -107,14 +109,12 @@ if __name__ == "__main__":
 
         # The noise objects for DDPG
         n_actions = vec_env.action_space.shape[-1]
-        action_noise = NormalActionNoise(mean=np.zeros(n_actions), sigma=0.1 * np.ones(n_actions))
 
         model = DDPG(
             "CnnPolicy",
             vec_env,
-            buffer_size=250_000,
-            action_noise=action_noise,
-            gradient_steps=-1,
+            buffer_size=200_000,
+            train_freq=1024,
             learning_rate = learning_configs['learning_rate'],
             verbose=1,
             device=device,
