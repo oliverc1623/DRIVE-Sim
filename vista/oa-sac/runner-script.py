@@ -14,12 +14,25 @@ def main():
         print("sac trial 1  failed.")
         return
 
-    # Running the second script without arguments
     try:
         run_script("train_sac.py", ["2"])
         print("sac trial 2 finished successfully.")
     except subprocess.CalledProcessError:
         print("sac trial 2  failed.")
+        return
+
+    try:
+        run_script("train_sac.py", ["3"])
+        print("sac trial 3 finished successfully.")
+    except subprocess.CalledProcessError:
+        print("sac trial 3  failed.")
+        return
+
+    try:
+        run_script("train_sac.py", ["4"])
+        print("sac trial 4 finished successfully.")
+    except subprocess.CalledProcessError:
+        print("sac trial 4  failed.")
         return
 
 if __name__ == "__main__":
