@@ -23,6 +23,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecVideoRecorder, VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
 device = ("cuda:1" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
@@ -93,21 +94,23 @@ policy_kwargs = dict(
 )
 
 if __name__ == "__main__":
-    for i in range(4,5):
+    for i in range(2,4):
+        callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=13, verbose=1)
         torch.cuda.empty_cache()
         num_cpu = 8
         vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
         vec_env = VecFrameStack(vec_env, n_stack=4)
     
         # Create log dir
-        log_dir = f"tmp_sac_gray{i}/"
+        log_dir = f"tmp_{i}/"
         os.makedirs(log_dir, exist_ok=True)
         vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
 
         model = SAC(
             "CnnPolicy",
             vec_env,
-            buffer_size=250_000,
+            buffer_size=200_000,
+            gradient_steps=-1,
             learning_rate = learning_configs['learning_rate'],
             verbose=1,
             device=device,
@@ -115,9 +118,10 @@ if __name__ == "__main__":
         timesteps = learning_configs['total_timesteps']
         model.learn(
             total_timesteps=timesteps, 
+            callback=callback_max_episodes,
             progress_bar=True
         )
 
         # Save the agent
-        model.save(f"vista_stacked_naturecnn_backbone_trial{i}")
+        model.save(f"sac-cnn{i}")
   

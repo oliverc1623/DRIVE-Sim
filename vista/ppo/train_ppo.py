@@ -90,8 +90,8 @@ learning_configs = {
 
 if __name__ == "__main__":
     # Stops training when the model reaches the maximum number of episodes
-    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=500, verbose=1)
-    for i in range(1,5):
+    for i in range(4,5):
+        callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=13, verbose=1)
         torch.cuda.empty_cache()
         num_cpu = 8
         vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
@@ -102,12 +102,14 @@ if __name__ == "__main__":
         os.makedirs(log_dir, exist_ok=True)
         vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
 
-        model = PPO("CnnPolicy", 
-                    vec_env, 
-                    learning_rate=0.0003,
-                    n_steps=256,
-                    verbose=1, 
-                    device=device
+        model = PPO(
+            "CnnPolicy", 
+            vec_env, 
+            learning_rate=0.0003,
+            n_steps=5,
+            batch_size=256,
+            verbose=1, 
+            device=device
         )
         timesteps = learning_configs['total_timesteps']
         model.learn(
