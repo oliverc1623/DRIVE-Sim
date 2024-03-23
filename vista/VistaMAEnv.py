@@ -161,7 +161,7 @@ class VistaMAEnv(gym.Env):
             'lookahead_road'], '\'lookahead_road\' in the first car config should be set to True'
 
         self._world: World = World(trace_paths, trace_config)
-        self._display = Display(self._world)
+        # self._display = Display(self._world)
         self._width, self._height = 0, 0
         self.render_mode = "rgb_array"
         for i in range(n_agents):
@@ -226,24 +226,26 @@ class VistaMAEnv(gym.Env):
             self.world.sample_new_location()
         for agent in self.world.agents:
             if agent == self.ego_agent:
-                agent.reset(new_trace_index,
-                            new_segment_index,
-                            new_frame_index,
-                            initial_dynamics_fn = initial_dynamics_fn,
-                            step_sensors=False)
+                agent.reset(
+                    new_trace_index,
+                    new_segment_index,
+                    new_frame_index,
+                    initial_dynamics_fn = initial_dynamics_fn,
+                    step_sensors=False
+                )
             else:
-                agent.reset(new_trace_index,
-                            new_segment_index,
-                            new_frame_index,
-                            step_sensors=False)
-
+                agent.reset(
+                    new_trace_index,
+                    new_segment_index,
+                    new_frame_index,
+                    step_sensors=False
+                )
         # Randomly initialize ado agents in the front
         ref_dynamics = self.ego_agent.human_dynamics
         polys = [misc.agent2poly(self.ego_agent, ref_dynamics)]
         for agent in self.world.agents:
             if agent == self.ego_agent:
                 continue
-
             collision_free = False
             resample_tries = 0
             while not collision_free and resample_tries < self.config[
@@ -332,7 +334,7 @@ class VistaMAEnv(gym.Env):
 
         # metrics
         current_xy = self.ego_agent.ego_dynamics.numpy()[:2]
-        self._distance += np.linalg.norm(current_xy - self._prev_xy)
+        self._distance += 1 # np.linalg.norm(current_xy - self._prev_xy)
         self._prev_xy = current_xy
         self._prev_yaw = self.ego_agent.ego_dynamics.numpy()[2]
 
@@ -345,9 +347,9 @@ class VistaMAEnv(gym.Env):
         info['agent_done'] = infos_from_terminal_condition[ego_id]['agent_done']
         info['crashed'] = infos_from_terminal_condition[ego_id]['crashed']
         info['distance'] = self._distance
-
-        truncated = False
-
+        truncated=False
+        if self._distance > 100:
+            truncated = True
         return observation, rewards[self.ego_agent.id], dones[self.ego_agent.id], truncated, info
 
     
