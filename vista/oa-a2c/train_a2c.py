@@ -101,30 +101,28 @@ learning_configs = {
 }
 
 if __name__ == "__main__":
-    for i in range(1,2):
-        torch.cuda.empty_cache()
-        num_cpu = 8 # Number of processes to use
-        vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-        # Frame-stacking with 4 frames
-        vec_env = VecFrameStack(vec_env, n_stack=4)
-
-        # Create log dir
-        log_dir = f"tmp_{i}/"
-        os.makedirs(log_dir, exist_ok=True)
-        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed'))
-
-        model = A2C("CnnPolicy", 
-                    vec_env, 
-                    learning_rate=0.0003,
-                    verbose=1, 
-                    device=device
-        )
-        timesteps = learning_configs['total_timesteps']
-        model.learn(
-            total_timesteps=timesteps, 
-            progress_bar=True
-        )
-
-        # Save the agent
-        model.save(f"ppo_trial{i}_naturecnn")
-    
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
+    torch.cuda.empty_cache()
+    num_cpu = 8 # Number of processes to use
+    vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+    # Frame-stacking with 4 frames
+    vec_env = VecFrameStack(vec_env, n_stack=4)
+    # Create log dir
+    log_dir = f"/mnt/persistent/collision-avoidance-a2c/tmp_{sys.argv[1]}/"
+    os.makedirs(log_dir, exist_ok=True)
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed'))
+    model = A2C(
+        "CnnPolicy", 
+        vec_env, 
+        learning_rate=0.0003,
+        verbose=1, 
+        device=device
+    )
+    timesteps = learning_configs['total_timesteps']
+    model.learn(
+        total_timesteps=timesteps, 
+        callback=callback_max_episodes,
+        progress_bar=True
+    )
+    # Save the agent
+    model.save(f"/mnt/persistent/collision-avoidance-a2c/collision-avoidance-a2c-trial{sys.argv[1]}_naturecnn")

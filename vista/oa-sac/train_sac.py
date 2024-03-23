@@ -98,13 +98,13 @@ def make_env(rank: int, seed: int = 0):
 
 learning_configs = {
     "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 5000,
+    "total_timesteps": 100_000,
     "env_id": "VISTA",
     "learning_rate": 0.0003
 }
 
 if __name__ == "__main__":
-    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=2, verbose=1)
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
     torch.cuda.empty_cache()
     num_cpu = 8 # Number of processes to use
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
@@ -121,6 +121,7 @@ if __name__ == "__main__":
         vec_env, 
         buffer_size=200_000,
         learning_rate=0.0003,
+        gradient_steps=-1,
         verbose=1, 
         device=device
     )

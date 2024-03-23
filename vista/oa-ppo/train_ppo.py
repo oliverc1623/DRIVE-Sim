@@ -16,6 +16,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
 import torch
 
@@ -56,10 +57,11 @@ def make_env(rank: int, seed: int = 0):
                 use_lighting=False,
             )
         ]
-        task_config=dict(n_agents=2,
-                         mesh_dir="../carpack01",
-                         init_dist_range=[30.0, 35.0],
-                         init_last_noise_range=[0.0, 0.0])
+        task_config=dict(
+            n_agents=2,
+            mesh_dir="../carpack01",
+            init_dist_range=[30.0, 35.0],
+            init_last_noise_range=[0.0, 0.0])
         display_config = dict(road_buffer_size=1000, )
         preprocess_config = {
             "crop_roi": True,
@@ -95,36 +97,36 @@ def make_env(rank: int, seed: int = 0):
 
 learning_configs = {
     "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 5000,
+    "total_timesteps": 100_000,
     "env_id": "VISTA",
     "learning_rate": 0.0003
 }
 
 if __name__ == "__main__":
-    for i in range(1,2):
-        torch.cuda.empty_cache()
-        num_cpu = 8 # Number of processes to use
-        vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-        # Frame-stacking with 4 frames
-        vec_env = VecFrameStack(vec_env, n_stack=4)
-
-        # Create log dir
-        log_dir = f"tmp_{i}/"
-        os.makedirs(log_dir, exist_ok=True)
-        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed'))
-
-        model = PPO("CnnPolicy", 
-                    vec_env, 
-                    learning_rate=0.0003,
-                    verbose=1, 
-                    device=device
-        )
-        timesteps = learning_configs['total_timesteps']
-        model.learn(
-            total_timesteps=timesteps, 
-            progress_bar=True
-        )
-
-        # Save the agent
-        model.save(f"ppo_trial{i}_naturecnn")
-    
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
+    torch.cuda.empty_cache()
+    num_cpu = 8 # Number of processes to use
+    vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+    # Frame-stacking with 4 frames
+    vec_env = VecFrameStack(vec_env, n_stack=4)
+    # Create log dir
+    log_dir = f"/mnt/persistent/collision-avoidance-ppo/tmp_{sys.argv[1]}/"
+    os.makedirs(log_dir, exist_ok=True)
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed'))
+    model = PPO(
+        "CnnPolicy", 
+        vec_env, 
+        learning_rate=0.0003,
+        n_steps=5,
+        batch_size=256,
+        verbose=1, 
+        device=device
+    )
+    timesteps = learning_configs['total_timesteps']
+    model.learn(
+        total_timesteps=timesteps, 
+        callback=callback_max_episodes,
+        progress_bar=True
+    )
+    # Save the agent
+    model.save(f"/mnt/persistent/collision-avoidance-ppo/collision-avoidance-ppo-trial{sys.argv[1]}_naturecnn")
