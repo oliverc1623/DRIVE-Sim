@@ -17,12 +17,79 @@ import numpy as np
 sns.set_theme(rc={'figure.figsize':(11.7,8.27)})
 
 
-# In[155]:
+# In[352]:
 
 
-log_dir = "ddpg/ddpg-tmp-trial4-lane-follow/"
+log_dir1 = "/mnt/persistent/collision-avoidance-sac/tmp_1"
+log_dir2 = "/mnt/persistent/collision-avoidance-sac/tmp_2"
+log_dir3 = "/mnt/persistent/collision-avoidance-sac/tmp_3"
+log_dir3 = "/mnt/persistent/collision-avoidance-sac/tmp_4"
 timesteps = 100_000
-plot_results([log_dir], timesteps, results_plotter.X_EPISODES, "PPO VISTA")
+plot_results([log_dir1,log_dir2,log_dir3,log_dir4], timesteps, results_plotter.X_EPISODES, "SAC VISTA")
+plt.show()
+
+
+# In[343]:
+
+
+log_dir1 = "/mnt/persistent/collision-avoidance-ppo/tmp_1"
+log_dir2 = "/mnt/persistent/collision-avoidance-ppo/tmp_2"
+log_dir3 = "/mnt/persistent/collision-avoidance-ppo/tmp_3"
+log_dir4 = "/mnt/persistent/collision-avoidance-ppo/tmp_4"
+timesteps = 100_000
+plot_results([log_dir1, log_dir2, log_dir3, log_dir4], timesteps, results_plotter.X_EPISODES, "PPO VISTA")
+plt.show()
+
+
+# In[353]:
+
+
+log_dir1 = "/mnt/persistent/collision-avoidance-a2c/tmp_1"
+log_dir2 = "/mnt/persistent/collision-avoidance-a2c/tmp_2"
+log_dir3 = "/mnt/persistent/collision-avoidance-a2c/tmp_3"
+log_dir4 = "/mnt/persistent/collision-avoidance-a2c/tmp_4"
+timesteps = 100_000
+plot_results([log_dir1, 
+              log_dir2, 
+              log_dir3, 
+              log_dir4
+             ], timesteps, results_plotter.X_EPISODES, "A2C VISTA")
+plt.show()
+
+
+# In[394]:
+
+
+log_dir1 = "/mnt/persistent/collision-avoidance-td3/tmp_1"
+log_dir2 = "/mnt/persistent/collision-avoidance-td3/tmp_2"
+log_dir3 = "/mnt/persistent/collision-avoidance-td3/tmp_3"
+log_dir4 = "/mnt/persistent/collision-avoidance-td3/tmp_4"
+timesteps = 5_200
+plot_results(
+    [
+        log_dir1, 
+        log_dir2, 
+        # log_dir3, 
+        # log_dir4
+     ], timesteps, results_plotter.X_EPISODES, "TD3 VISTA")
+plt.show()
+
+
+# In[393]:
+
+
+log_dir1 = "/mnt/persistent/collision-avoidance-ddpg/tmp_1"
+log_dir2 = "/mnt/persistent/collision-avoidance-ddpg/tmp_2"
+log_dir3 = "/mnt/persistent/collision-avoidance-ddpg/tmp_3"
+log_dir4 = "/mnt/persistent/collision-avoidance-ddpg/tmp_4"
+timesteps = 4_600
+plot_results(
+    [
+        log_dir1, 
+        log_dir2, 
+        # log_dir3, 
+        # log_dir4
+     ], timesteps, results_plotter.X_EPISODES, "DDPG VISTA")
 plt.show()
 
 
@@ -53,6 +120,8 @@ def getDataFrame(log_dir):
     df = xyListToDataFrame(data)
     return df
 
+
+# # Lane Follow
 
 # In[142]:
 
@@ -124,11 +193,15 @@ ddpg_df4['Algorithm'] = 'DDPG'
 ddpg_df = pd.concat([ddpg_df1[:100], ddpg_df2[:100], ddpg_df3[:100], ddpg_df4[:100]]).reset_index()
 
 
-# In[159]:
+# In[173]:
 
 
 combined_df = pd.concat([sac_df,ppo_df,a2c_df,td3_df,ddpg_df])
-sns.lineplot(combined_df, x='Episode',y='Reward',hue='Algorithm')
+combined_df['Rolling Average'] = combined_df['Reward'].rolling(window=5).mean()
+combined_df = combined_df.reset_index()
+lane_follow_plot = sns.lineplot(combined_df, x='Episode',y='Reward',hue='Algorithm',errorbar=None)
+fig = lane_follow_plot.get_figure()
+fig.savefig("lane-follow-benchmark.pdf")
 
 
 # In[ ]:
