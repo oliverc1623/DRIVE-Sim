@@ -10,15 +10,15 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))
 from CustomCNN import CustomCNN
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('SeqTransformer.py'))))
 from SeqTransformer import SeqTransformer
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
 # Standard Torch
 import copy
 import time
 import torch
-import numpy as np
 
 # SB3
-from stable_baselines3 import TD3
+from stable_baselines3 import DDPG
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
@@ -31,7 +31,7 @@ device = ("cuda:0" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
-def make_env(rank: int, seed: int = 0):
+def make_env(rank: int, seed: int = 47):
     """
     Utility function for multiprocessed env.
 
@@ -94,9 +94,9 @@ def make_env(rank: int, seed: int = 0):
             preprocess_config=preprocess_config,
             task_config=task_config
         )
-        env.reset(seed=seed + rank)
+        env.reset(seed=rank+seed)
         return env
-    set_random_seed(rank+seed)
+    set_random_seed(seed)
     return _init
 
 learning_configs = {
@@ -118,23 +118,20 @@ if __name__ == "__main__":
     vec_env = VecFrameStack(vec_env, n_stack=4)
 
     # Create log dir
-    log_dir = f"/mnt/persistent/collision-avoidance-td3/tmp_{sys.argv[1]}/"
+    log_dir = f"/mnt/persistent/collision-avoidance-ddpg/tmp_{sys.argv[1]}/"
     os.makedirs(log_dir, exist_ok=True)
-    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed'))
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
 
-    # The noise objects for TD3
+    # The noise objects for DDPG
     n_actions = vec_env.action_space.shape[-1]
-    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.1*np.ones(n_actions))
-    # policy_kwargs = dict(net_arch=dict(pi=[64, 64], qf=[400, 300]))
-    model = TD3(
+
+    model = DDPG(
         "CnnPolicy",
         vec_env,
-        learning_rate=0.0003,
         buffer_size=200_000,
-        action_noise=action_noise,
-        verbose=1,
         train_freq=1024,
-        gradient_steps=-1,
+        learning_rate = learning_configs['learning_rate'],
+        verbose=1,
         device=device,
     )
     timesteps = learning_configs['total_timesteps']
@@ -142,5 +139,6 @@ if __name__ == "__main__":
         total_timesteps=timesteps, 
         progress_bar=True
     )
+
     # Save the agent
-    model.save(f"/mnt/persistent/collision-avoidance-td3/collision-avoidance-td3_trial{sys.argv[1]}_naturecnn")
+    model.save(f"/mnt/persistent/collision-avoidance-ddpg/collision-avoidance-ddpg_trial{sys.argv[1]}_naturecnn")
