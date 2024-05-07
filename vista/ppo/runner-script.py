@@ -8,31 +8,39 @@ def run_script(script_name, args=None):
 def main():
     # Running the first script with arguments
     try:
-        run_script("train_ppo.py", ["1"])
-        print("ppo trial 1 finished successfully.")
+        trial = 5
+        print(f"Running PPO Trial {trial}")
+        run_script("train_ppo.py", [f"{trial}"])
+        print(f"ppo trial {trial} finished successfully.")
     except subprocess.CalledProcessError:
-        print("ppo trial 1  failed.")
+        print(f"ppo trial {trial}  failed.")
         return
 
     try:
-        run_script("train_ppo.py", ["2"])
-        print("ppo trial 2 finished successfully.")
+        trial = 6
+        print(f"Running PPO Trial {trial}")
+        run_script("train_ppo.py", [f"{trial}"])
+        print(f"ppo trial {trial} finished successfully.")
     except subprocess.CalledProcessError:
-        print("ppo trial 2  failed.")
+        print(f"ppo trial {trial}  failed.")
         return
 
     try:
-        run_script("train_ppo.py", ["3"])
-        print("ppo trial 3 finished successfully.")
+        trial = 7
+        print(f"Running PPO Trial {trial}")
+        run_script("train_ppo.py", [f"{trial}"])
+        print(f"ppo trial {trial} finished successfully.")
     except subprocess.CalledProcessError:
-        print("ppo trial 3  failed.")
+        print(f"ppo trial {trial}  failed.")
         return
 
     try:
-        run_script("train_ppo.py", ["4"])
-        print("ppo trial 4 finished successfully.")
+        trial = 8
+        print(f"Running PPO Trial {trial}")
+        run_script("train_ppo.py", [f"{trial}"])
+        print(f"ppo trial {trial} finished successfully.")
     except subprocess.CalledProcessError:
-        print("ppo trial 4  failed.")
+        print(f"ppo trial {trial}  failed.")
         return
 
 if __name__ == "__main__":

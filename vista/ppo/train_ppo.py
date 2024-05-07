@@ -83,7 +83,7 @@ def make_env(rank: int, seed: int = 0):
 
 learning_configs = {
     "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 100_000,
+    "total_timesteps": 200_000,
     "env_id": "VISTA",
     "learning_rate": 0.0003
 }
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         "CnnPolicy",
         vec_env,
         learning_rate=0.0003,
-        n_steps=5,
+        n_steps=2048,
         batch_size=256,
         verbose=1,
         device=device
