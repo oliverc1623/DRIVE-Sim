@@ -7,6 +7,7 @@ import random
 from skimage.transform import resize
 from skimage.color import rgb2gray
 from skimage.filters import threshold_otsu
+import cv2
 
 from vista import World
 from vista import Display
@@ -57,8 +58,8 @@ def lane_reward_fn(task, agent_id, prev_yaw, **kwargs):
     return reward, {}
 
 def initial_dynamics_fn(x, y, yaw, steering, speed):
-    x_perturbation = 1
-    yaw_perturbation = .001
+    x_perturbation = 2
+    yaw_perturbation = .01
     return [
         x + random.uniform(-x_perturbation,x_perturbation),
         y,
@@ -130,17 +131,25 @@ class VistaEnv(gym.Env):
             i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
             self._width, self._height = i2-i1, j2-j1
         if self._preprocess_config['resize']:
-            self._width = 128
-            self._height = 128
+            self._width = 84
+            self._height = 84
         obs_shape = (3, self._width, self._height)
         if self._preprocess_config['grayscale']:
             obs_shape = (1, self._width, self._height)
         else:
             obs_shape = (3, self._width, self._height)
-        self.observation_space = spaces.Box(low=0, high=255,
-                                            shape=obs_shape,
-                                            dtype=np.uint8)
-        self.action_space = spaces.Box(low=np.array([-1/5.0, 1.0]), high=np.array([1/5.0, 40.0]), shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=obs_shape,
+            dtype=np.uint8
+        )
+        self.action_space = spaces.Box(
+            low=np.array([-0.75, 1.0]),
+            high=np.array([0.75, 15.0]),
+            shape=(2,),
+            dtype=np.float32
+        )
 
     def _preprocess(self, image):
         # grayscale
@@ -152,7 +161,7 @@ class VistaEnv(gym.Env):
         image = image[i1:i2, j1:j2]
         # resize
         if self._preprocess_config['resize']:
-            image = resize(image, (128, 128), anti_aliasing=True)
+            image = resize(image, (self._width, self._height), anti_aliasing=True)
             image = (image*255).astype('uint8')
         # binarize
         if self._preprocess_config['binary']:
@@ -192,6 +201,8 @@ class VistaEnv(gym.Env):
         observations = agent.observations
         observation = observations['camera_front']
         observation = self._preprocess(observation)
+        cv2.imshow("Obs", observation[0])
+        cv2.waitKey(1)
         # Define terminal condition
         done, info_from_terminal_condition = self.config['terminal_condition'](
             self, agent.id)
@@ -209,7 +220,7 @@ class VistaEnv(gym.Env):
         self._prev_yaw = agent.ego_dynamics.numpy()[2]
         info['distance'] = self._distance
         truncated=False
-        if self._distance > 500:
+        if self._distance > 250:
             truncated = True
         return observation, reward, done, truncated, info
 
