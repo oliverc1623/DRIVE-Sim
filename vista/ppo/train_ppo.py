@@ -118,5 +118,5 @@ if __name__ == "__main__":
     )
 
     # Save the agent
-    model.save(f"/mnt/persistent/collision-avoidance-ppo/collision-avoidance-ppo-trial{sys.argv[1]}_naturecnn")
+    model.save(f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/ppo-model-trial{sys.argv[1]}_naturecnn")
 
