@@ -54,12 +54,12 @@ def lane_reward_fn(task, agent_id, prev_yaw, **kwargs):
     lane_reward = 1 - (q_lat/z_lat)**2
     rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], 1)
     reward = lane_reward + rotation_penalty
-    reward = -1 if kwargs['done'] else reward
+    reward = 0 if kwargs['done'] else reward
     return reward, {}
 
 def initial_dynamics_fn(x, y, yaw, steering, speed):
-    x_perturbation = 2
-    yaw_perturbation = .01
+    x_perturbation = 1.5
+    yaw_perturbation = .1
     return [
         x + random.uniform(-x_perturbation,x_perturbation),
         y,
