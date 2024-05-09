@@ -53,7 +53,8 @@ def lane_reward_fn(task, agent_id, prev_yaw, **kwargs):
     q_lat = np.abs(agent.relative_state.x)
     lane_reward = 1 - (q_lat/z_lat)**2
     rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], 1)
-    reward = lane_reward + rotation_penalty
+    speed_reward = 1 - abs(0 - agent.human_speed)/15
+    reward = lane_reward + rotation_penalty + speed_reward
     reward = 0 if kwargs['done'] else reward
     return reward, {}
 
@@ -157,7 +158,7 @@ class VistaEnv(gym.Env):
         num_frames = self._world.traces[trace_index].num_of_frames
         frames_left = num_frames - cur_frame
         course_completion_rate = (self._distance/frames_left)*100
-        return course_completion_rate
+        return round(course_completion_rate, 4)
 
     def _preprocess(self, image):
         # grayscale
@@ -195,6 +196,7 @@ class VistaEnv(gym.Env):
         info['exceed_rot'] = False
         info['distance'] = self._distance
         info['agent_done'] = False
+        info['course_completion_rate'] = 0.0
 
         observation = observations[agent.id]['camera_front']
         observation = self._preprocess(observation)
