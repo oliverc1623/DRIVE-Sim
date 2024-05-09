@@ -151,6 +151,14 @@ class VistaEnv(gym.Env):
             dtype=np.float32
         )
 
+    def _get_course_completion_rate(self):
+        cur_frame = self._world.agents[0].frame_index
+        trace_index = self._world.agents[0].trace_index
+        num_frames = self._world.traces[trace_index].num_of_frames
+        frames_left = num_frames - cur_frame
+        course_completion_rate = (self._distance/frames_left)*100
+        return course_completion_rate
+
     def _preprocess(self, image):
         # grayscale
         if self._preprocess_config['grayscale']:
@@ -201,8 +209,8 @@ class VistaEnv(gym.Env):
         observations = agent.observations
         observation = observations['camera_front']
         observation = self._preprocess(observation)
-        cv2.imshow("Obs", observation[0])
-        cv2.waitKey(1)
+        # cv2.imshow("Obs", observation[0])
+        # cv2.waitKey(1)
         # Define terminal condition
         done, info_from_terminal_condition = self.config['terminal_condition'](
             self, agent.id)
@@ -222,6 +230,7 @@ class VistaEnv(gym.Env):
         truncated=False
         if self._distance > 250:
             truncated = True
+        info['course_completion_rate'] = self._get_course_completion_rate()
         return observation, reward, done, truncated, info
 
     def set_seed(self, seed) -> None:
