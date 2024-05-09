@@ -230,8 +230,8 @@ class VistaEnv(gym.Env):
         self._prev_yaw = agent.ego_dynamics.numpy()[2]
         info['distance'] = self._distance
         truncated=False
-        if self._distance > 250:
-            truncated = True
+        # if self._distance > 250:
+        #     truncated = True
         info['course_completion_rate'] = self._get_course_completion_rate()
         return observation, reward, done, truncated, info
 
