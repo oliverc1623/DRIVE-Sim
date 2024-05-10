@@ -20,7 +20,7 @@ from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
 import torch
 
-device = ("cuda:0" if torch.cuda.is_available() else "cpu")
+device = ("cuda:1" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
@@ -90,7 +90,7 @@ learning_configs = {
 
 if __name__ == "__main__":
     # Stops training when the model reaches the maximum number of episodes
-    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=19, verbose=1)
     torch.cuda.empty_cache()
     num_cpu = 8
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
@@ -100,14 +100,18 @@ if __name__ == "__main__":
     log_dir = f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/"
     os.makedirs(log_dir, exist_ok=True)
     vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
-
+    policy_kwargs = dict(
+        features_extractor_class=CustomCNN,
+        features_extractor_kwargs=dict(features_dim=128),
+    )
     model = PPO(
         "CnnPolicy",
         vec_env,
         learning_rate=0.0003,
         n_steps=2048,
-        batch_size=256,
+        batch_size=512,
         verbose=1,
+        policy_kwargs=policy_kwargs,
         device=device
     )
     timesteps = learning_configs['total_timesteps']
@@ -118,5 +122,5 @@ if __name__ == "__main__":
     )
 
     # Save the agent
-    model.save(f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/ppo-model-trial{sys.argv[1]}_naturecnn")
+    model.save(f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/ppo-model-trial{sys.argv[1]}_customCNN")
 
