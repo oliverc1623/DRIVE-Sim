@@ -25,7 +25,12 @@ log_dir2 = "/mnt/persistent/collision-avoidance-sac/tmp_2"
 log_dir3 = "/mnt/persistent/collision-avoidance-sac/tmp_3"
 log_dir3 = "/mnt/persistent/collision-avoidance-sac/tmp_4"
 timesteps = 100_000
-plot_results([log_dir1,log_dir2,log_dir3,log_dir4], timesteps, results_plotter.X_EPISODES, "SAC VISTA")
+plot_results([
+    log_dir1,
+    log_dir2,
+    log_dir3,
+    log_dir4
+], timesteps, results_plotter.X_EPISODES, "SAC VISTA")
 plt.show()
 
 
