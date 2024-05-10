@@ -65,6 +65,9 @@ pip install ffio
 pip install pyrender
 pip install descartes
 pip install wandb
+pip install scikit-image
+pip install h5py
+pip install seaborn
 pip install vit_pytorch
 ```
 
