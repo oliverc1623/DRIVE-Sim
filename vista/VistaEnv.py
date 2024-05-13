@@ -53,7 +53,7 @@ def lane_reward_fn(task, agent_id, prev_yaw, **kwargs):
     q_lat = np.abs(agent.relative_state.x)
     lane_reward = 1 - (q_lat/z_lat)**2
     rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], 1)
-    speed_reward = 1 - abs(0 - agent.human_speed)/15
+    speed_reward = 1 - abs(agent.speed - agent.human_speed)/15
     reward = lane_reward + rotation_penalty + speed_reward
     reward = 0 if kwargs['done'] else reward
     return reward, {}
