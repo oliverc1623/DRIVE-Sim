@@ -83,7 +83,7 @@ def make_env(rank: int, seed: int = 0):
 
 learning_configs = {
     "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 200_000,
+    "total_timesteps": 500_000,
     "env_id": "VISTA",
     "learning_rate": 0.0003
 }
@@ -102,12 +102,12 @@ if __name__ == "__main__":
     vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
     policy_kwargs = dict(
         features_extractor_class=CustomCNN,
-        features_extractor_kwargs=dict(features_dim=128),
+        features_extractor_kwargs=dict(features_dim=64),
     )
     model = PPO(
         "CnnPolicy",
         vec_env,
-        learning_rate=0.00001,
+        learning_rate=0.0001,
         n_steps=256,
         batch_size=256,
         verbose=1,
