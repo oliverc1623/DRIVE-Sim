@@ -90,7 +90,7 @@ learning_configs = {
 
 if __name__ == "__main__":
     # Stops training when the model reaches the maximum number of episodes
-    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=19, verbose=1)
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
     torch.cuda.empty_cache()
     num_cpu = 8
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
@@ -107,9 +107,9 @@ if __name__ == "__main__":
     model = PPO(
         "CnnPolicy",
         vec_env,
-        learning_rate=0.0003,
-        n_steps=2048,
-        batch_size=512,
+        learning_rate=0.00001,
+        n_steps=256,
+        batch_size=256,
         verbose=1,
         policy_kwargs=policy_kwargs,
         device=device
