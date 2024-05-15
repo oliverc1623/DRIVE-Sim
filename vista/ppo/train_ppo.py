@@ -9,7 +9,9 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))
 from CustomCNN import CustomCNN
 import copy
 import time
+from typing import Callable
 
+import torch
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
@@ -18,12 +20,9 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
-import torch
-
 device = ("cuda:1" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
-
 
 def make_env(rank: int, seed: int = 0):
     """
@@ -81,11 +80,33 @@ def make_env(rank: int, seed: int = 0):
     time.sleep(1)
     return _init
 
+def linear_schedule(initial_value: float) -> Callable[[float], float]:
+    """
+    Linear learning rate schedule.
+
+    :param initial_value: Initial learning rate.
+    :return: schedule that computes
+      current learning rate depending on remaining progress
+    """
+    def func(progress_remaining: float) -> float:
+        """
+        Progress will decrease from 1 (beginning) to 0.
+
+        :param progress_remaining:
+        :return: current learning rate
+        """
+        return progress_remaining * initial_value
+
+    return func
+
 learning_configs = {
-    "policy_type": "CustomCnnPolicy",
+    "policy_type": CustomCNN,
     "total_timesteps": 500_000,
     "env_id": "VISTA",
-    "learning_rate": 0.0003
+    "learning_rate": linear_schedule(0.0001)
+    "n_steps": 128,
+    "batch_size": 64,
+    "ent_coef": 0.01,
 }
 
 if __name__ == "__main__":
@@ -101,15 +122,16 @@ if __name__ == "__main__":
     os.makedirs(log_dir, exist_ok=True)
     vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
     policy_kwargs = dict(
-        features_extractor_class=CustomCNN,
-        features_extractor_kwargs=dict(features_dim=64),
+        features_extractor_class=learning_configs['policy_type'],
+        features_extractor_kwargs=dict(features_dim=256),
     )
     model = PPO(
         "CnnPolicy",
         vec_env,
-        learning_rate=0.0001,
-        n_steps=256,
-        batch_size=256,
+        learning_rate=learning_configs['learning_rate'],
+        n_steps=learning_configs['n_steps'],
+        batch_size=learning_configs['batch_size'],
+        ent_coef=learning_configs['ent_coef'],
         verbose=1,
         policy_kwargs=policy_kwargs,
         device=device
