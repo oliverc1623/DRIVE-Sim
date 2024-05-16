@@ -74,9 +74,10 @@ def make_env(rank: int, seed: int = 0):
                display_config = display_config,
                preprocess_config = preprocess_config,
                sensors_configs = [camera_config])
-        env.reset(seed=seed + rank)
+        env.set_seed(seed + rank)
+        env.reset()
         return env
-    set_random_seed(seed)
+    set_random_seed(seed + rank)
     time.sleep(1)
     return _init
 
@@ -103,9 +104,9 @@ learning_configs = {
     "policy_type": CustomCNN,
     "total_timesteps": 500_000,
     "env_id": "VISTA",
-    "learning_rate": linear_schedule(0.0001)
-    "n_steps": 128,
-    "batch_size": 64,
+    "learning_rate": linear_schedule(0.0001),
+    "n_steps": 256,
+    "batch_size": 256,
     "ent_coef": 0.01,
 }
 
@@ -115,7 +116,7 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     num_cpu = 8
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    vec_env = VecFrameStack(vec_env, n_stack=4)
+    vec_env = VecFrameStack(vec_env, n_stack=4, channels_order="last")
 
     # Create log dir
     log_dir = f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/"
