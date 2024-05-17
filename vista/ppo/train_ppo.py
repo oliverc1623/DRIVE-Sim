@@ -106,7 +106,7 @@ learning_configs = {
     "env_id": "VISTA",
     "learning_rate": linear_schedule(0.0001),
     "n_steps": 256,
-    "batch_size": 256,
+    "batch_size": 64,
     "ent_coef": 0.01,
 }
 
