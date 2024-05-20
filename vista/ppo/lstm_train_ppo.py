@@ -116,7 +116,7 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     num_cpu = 8
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    # vec_env = VecFrameStack(vec_env, n_stack=4)
+    vec_env = VecFrameStack(vec_env, n_stack=4)
 
     # Create log dir
     log_dir = f"/mnt/persistent/lane-follow-lstm-ppo/tmp_{sys.argv[1]}/"

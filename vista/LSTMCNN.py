@@ -12,14 +12,12 @@ class LSTMCNN(BaseFeaturesExtractor):
     :param features_dim: (int) Number of features extracted.
         This corresponds to the number of unit for the last layer.
     """
-
     def __init__(self, observation_space: spaces.Box, features_dim: int = 64, lstm_hidden_size: int = 256):
         super().__init__(observation_space, features_dim)
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
-        n_input_channels = observation_space.shape[0]
         self.cnn = nn.Sequential(
-            nn.Conv2d(n_input_channels, 256, kernel_size=5, stride=2, padding=1),
+            nn.Conv2d(1, 256, kernel_size=5, stride=2, padding=1),
             nn.GroupNorm(128, 256),
             nn.ReLU(),
             nn.Conv2d(256, 256, kernel_size=5, stride=2, padding=1),
@@ -31,10 +29,13 @@ class LSTMCNN(BaseFeaturesExtractor):
         # Compute shape by doing one forward pass
         with th.no_grad():
             n_flatten = self.cnn(
-                th.as_tensor(observation_space.sample()[None]).float()
+                th.zeros((1, 1, 84, 84))
             ).shape[1]
 
-        self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
+        self.linear = nn.Sequential(
+            nn.Linear(n_flatten, features_dim), 
+            nn.ReLU()
+        )
 
         # LSTM layer
         self.lstm = nn.LSTM(features_dim, lstm_hidden_size, batch_first=True)
@@ -45,11 +46,11 @@ class LSTMCNN(BaseFeaturesExtractor):
     def forward(self, observations: th.Tensor, lstm_state: tuple = None, dones: th.Tensor = None) -> th.Tensor:
         # Prepare LSTM input
         batch_size, seq_len, h, w = observations.size()
-        # observations = observations.view(batch_size * seq_len, h, w)
-        cnn_out = self.linear(self.cnn(observations))
-        cnn_out = cnn_out.view(batch_size, seq_len, -1)
-        
-        # lstm_in = cnn_out.view(batch_size, seq_len, -1)
+        cnn_out = []
+        for t in range(seq_len):
+            single_frame = observations[:, t, :, :].unsqueeze(1)
+            cnn_out.append(self.linear(self.cnn(single_frame)))
+        cnn_out = th.stack(cnn_out, dim=1)
         
         if lstm_state is None:
             h0 = th.zeros((1, batch_size, self.lstm_hidden_size)).to(cnn_out.device)
