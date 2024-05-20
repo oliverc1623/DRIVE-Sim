@@ -131,7 +131,7 @@ if __name__ == "__main__":
     vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
     policy_kwargs = dict(
         features_extractor_class=learning_configs['policy_type'],
-        features_extractor_kwargs=dict(features_dim=256, lstm_hidden_size=256))
+        features_extractor_kwargs=dict(features_dim=256, lstm_hidden_size=256)
     )
     model = PPO(
         "CnnPolicy",
