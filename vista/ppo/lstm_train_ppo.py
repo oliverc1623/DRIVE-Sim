@@ -24,13 +24,6 @@ device = ("cuda:1" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
-class CustomPolicy(ActorCriticPolicy):
-    def __init__(self, observation_space: spaces.Box, action_space: spaces.Discrete, lr_schedule, *args, **kwargs):
-        super(CustomPolicy, self).__init__(observation_space, action_space, lr_schedule,
-                                           *args, **kwargs,
-                                           features_extractor_class=CustomCNNLSTM,
-                                           features_extractor_kwargs=dict(features_dim=256, lstm_hidden_size=256))
-
 def make_env(rank: int, seed: int = 0):
     """
     Utility function for multiprocessed env.
@@ -123,10 +116,10 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     num_cpu = 8
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    vec_env = VecFrameStack(vec_env, n_stack=4)
+    # vec_env = VecFrameStack(vec_env, n_stack=4)
 
     # Create log dir
-    log_dir = f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/"
+    log_dir = f"/mnt/persistent/lane-follow-lstm-ppo/tmp_{sys.argv[1]}/"
     os.makedirs(log_dir, exist_ok=True)
     vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
     policy_kwargs = dict(
@@ -152,5 +145,5 @@ if __name__ == "__main__":
     )
 
     # Save the agent
-    model.save(f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/ppo-model-trial{sys.argv[1]}_customCNN")
+    model.save(f"/mnt/persistent/lane-follow-lstm-ppo/tmp_{sys.argv[1]}/ppo-model-trial{sys.argv[1]}_LSTMCNN")
     

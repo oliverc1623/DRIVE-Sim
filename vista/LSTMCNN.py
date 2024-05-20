@@ -39,14 +39,17 @@ class LSTMCNN(BaseFeaturesExtractor):
         # LSTM layer
         self.lstm = nn.LSTM(features_dim, lstm_hidden_size, batch_first=True)
         self.lstm_hidden_size = lstm_hidden_size
-        self.features_dim = lstm_hidden_size
+        
+        self._features_dim = lstm_hidden_size
 
     def forward(self, observations: th.Tensor, lstm_state: tuple = None, dones: th.Tensor = None) -> th.Tensor:
-        cnn_out = self.linear(self.cnn(observations))
-        
         # Prepare LSTM input
-        batch_size, seq_len, _ = cnn_out.size()
-        lstm_in = cnn_out.view(batch_size, seq_len, -1)
+        batch_size, seq_len, h, w = observations.size()
+        # observations = observations.view(batch_size * seq_len, h, w)
+        cnn_out = self.linear(self.cnn(observations))
+        cnn_out = cnn_out.view(batch_size, seq_len, -1)
+        
+        # lstm_in = cnn_out.view(batch_size, seq_len, -1)
         
         if lstm_state is None:
             h0 = th.zeros((1, batch_size, self.lstm_hidden_size)).to(cnn_out.device)
@@ -54,7 +57,11 @@ class LSTMCNN(BaseFeaturesExtractor):
         else:
             h0, c0 = lstm_state
         
-        lstm_out, lstm_state = self.lstm(lstm_in, (h0, c0))
+        lstm_out, lstm_state = self.lstm(cnn_out, (h0, c0))
         
         # Output features for the policy
-        return lstm_out[:, -1, :], lstm_state
+        return lstm_out[:, -1, :]
+    
+    @property
+    def features_dim(self):
+        return self._features_dim
