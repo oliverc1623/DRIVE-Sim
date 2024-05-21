@@ -31,7 +31,7 @@ class LSTMCNN(BaseFeaturesExtractor):
                 th.zeros((1, 1, 84, 84))
             ).shape[1]
         # LSTM layer
-        self.lstm = nn.LSTM(n_flatten, lstm_hidden_size, batch_first=True)
+        self.lstm = nn.LSTM(n_flatten, lstm_hidden_size, num_layers=2, batch_first=True)
         self.lstm_hidden_size = lstm_hidden_size
         self._features_dim = lstm_hidden_size
         # Linear layer
