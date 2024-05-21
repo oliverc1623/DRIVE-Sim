@@ -17,51 +17,40 @@ class LSTMCNN(BaseFeaturesExtractor):
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
         self.cnn = nn.Sequential(
-            nn.Conv2d(1, 256, kernel_size=5, stride=2, padding=1),
-            nn.GroupNorm(128, 256),
+            nn.Conv2d(1, 32, kernel_size=8, stride=4, padding=0),
             nn.ReLU(),
-            nn.Conv2d(256, 256, kernel_size=5, stride=2, padding=1),
-            nn.GroupNorm(128, 256),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
-            nn.Flatten(),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
+            nn.ReLU(),
+            nn.Flatten()
         )
-
         # Compute shape by doing one forward pass
         with th.no_grad():
             n_flatten = self.cnn(
                 th.zeros((1, 1, 84, 84))
             ).shape[1]
-
+        # LSTM layer
+        self.lstm = nn.LSTM(n_flatten, lstm_hidden_size, batch_first=True)
+        self.lstm_hidden_size = lstm_hidden_size
+        self._features_dim = lstm_hidden_size
+        # Linear layer
         self.linear = nn.Sequential(
-            nn.Linear(n_flatten, features_dim), 
+            nn.Linear(features_dim, features_dim), 
             nn.ReLU()
         )
 
-        # LSTM layer
-        self.lstm = nn.LSTM(features_dim, lstm_hidden_size, batch_first=True)
-        self.lstm_hidden_size = lstm_hidden_size
-        
-        self._features_dim = lstm_hidden_size
-
-    def forward(self, observations: th.Tensor, lstm_state: tuple = None, dones: th.Tensor = None) -> th.Tensor:
+    def forward(self, observations: th.Tensor) -> th.Tensor:
         # Prepare LSTM input
         batch_size, seq_len, h, w = observations.size()
         cnn_out = []
         for t in range(seq_len):
             single_frame = observations[:, t, :, :].unsqueeze(1)
-            cnn_out.append(self.linear(self.cnn(single_frame)))
+            cnn_out.append(self.cnn(single_frame))
         cnn_out = th.stack(cnn_out, dim=1)
-        
-        if lstm_state is None:
-            h0 = th.zeros((1, batch_size, self.lstm_hidden_size)).to(cnn_out.device)
-            c0 = th.zeros((1, batch_size, self.lstm_hidden_size)).to(cnn_out.device)
-        else:
-            h0, c0 = lstm_state
-        
-        lstm_out, lstm_state = self.lstm(cnn_out, (h0, c0))
-        
-        # Output features for the policy
-        return lstm_out[:, -1, :]
+        lstm_out, lstm_state = self.lstm(cnn_out)
+        out = self.linear(lstm_out[:, -1, :]) 
+        return out
     
     @property
     def features_dim(self):
