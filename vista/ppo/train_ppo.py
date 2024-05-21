@@ -105,9 +105,9 @@ learning_configs = {
     "total_timesteps": 500_000,
     "env_id": "VISTA",
     "learning_rate": linear_schedule(0.0001),
-    "n_steps": 256,
-    "batch_size": 64,
-    "ent_coef": 0.01,
+    "n_steps": 2048,
+    "batch_size": 32,
+    "ent_coef": 0.0,
 }
 
 if __name__ == "__main__":
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
     policy_kwargs = dict(
         features_extractor_class=learning_configs['policy_type'],
-        features_extractor_kwargs=dict(features_dim=256),
+        features_extractor_kwargs=dict(features_dim=512),
     )
     model = PPO(
         "CnnPolicy",
