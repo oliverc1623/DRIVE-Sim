@@ -105,7 +105,7 @@ learning_configs = {
     "total_timesteps": 500_000,
     "env_id": "VISTA",
     "learning_rate": linear_schedule(0.0001),
-    "n_steps": 2048,
+    "n_steps": 512,
     "batch_size": 32,
     "ent_coef": 0.0,
 }
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     num_cpu = 8
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    vec_env = VecFrameStack(vec_env, n_stack=32)
+    vec_env = VecFrameStack(vec_env, n_stack=16)
 
     # Create log dir
     log_dir = f"/mnt/persistent/lane-follow-lstm-ppo/tmp_{sys.argv[1]}/"
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
     policy_kwargs = dict(
         features_extractor_class=learning_configs['policy_type'],
-        features_extractor_kwargs=dict(features_dim=512, lstm_hidden_size=512)
+        features_extractor_kwargs=dict(features_dim=256, lstm_hidden_size=256)
     )
     model = PPO(
         "CnnPolicy",
