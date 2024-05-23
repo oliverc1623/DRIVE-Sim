@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))
 from CustomCNN import CustomCNN
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('SeqTransformer.py'))))
 from SeqTransformer import SeqTransformer
+from typing import Callable
 
 # Standard Torch
 import copy
@@ -81,52 +82,63 @@ def make_env(rank: int, seed: int = 47):
                display_config = display_config,
                preprocess_config = preprocess_config,
                sensors_configs = [camera_config])
-        env.reset(seed=rank+seed)
+        env.set_seed(seed + rank)
+        env.reset()
         return env
-    set_random_seed(seed)
+    set_random_seed(seed + rank)
+    time.sleep(1)
     return _init
 
+def linear_schedule(initial_value: float) -> Callable[[float], float]:
+    def func(progress_remaining: float) -> float:
+        return progress_remaining * initial_value
+    return func
+
 learning_configs = {
-    "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 100_000,
+    "policy_type": CustomCNN,
+    "total_timesteps": 500_000,
     "env_id": "VISTA",
-    "learning_rate": 0.0003
+    "learning_rate": 0.01, #linear_schedule(0.01),
+    "buffer_size": 200_000,
+    "train_freq": (2048, "step")
 }
 
-policy_kwargs = dict(
-    features_extractor_class=CustomCNN,
-)
-
 if __name__ == "__main__":
-    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=100, verbose=1)
-    for i in range(1,5):
-        torch.cuda.empty_cache()
-        num_cpu = 8
-        vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-        vec_env = VecFrameStack(vec_env, n_stack=4)
-    
-        # Create log dir
-        log_dir = f"td3-trial{i}-lane-follow/"
-        os.makedirs(log_dir, exist_ok=True)
-        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
+    torch.cuda.empty_cache()
+    num_cpu = 8
+    vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+    vec_env = VecFrameStack(vec_env, n_stack=4)
 
-        # The noise objects for DDPG
-        n_actions = vec_env.action_space.shape[-1]
-        action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=1.0*np.ones(n_actions))
+    # Create log dir
+    log_dir = f"/mnt/persistent/lane-follow-td3/tmp_{sys.argv[1]}/"
+    os.makedirs(log_dir, exist_ok=True)
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
+    policy_kwargs = dict(
+        features_extractor_class=learning_configs['policy_type'],
+        features_extractor_kwargs=dict(features_dim=128),
+    )
+    # The noise objects for TD3
+    n_actions = vec_env.action_space.shape[-1]
+    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.1*np.ones(n_actions))
 
-        model = TD3(
-            "CnnPolicy",
-            vec_env,
-            verbose=1,
-            train_freq=500,
-            device=device,
-        )
-        timesteps = learning_configs['total_timesteps']
-        model.learn(
-            total_timesteps=timesteps, 
-            callback=callback_max_episodes,
-            progress_bar=True
-        )
+    model = TD3(
+        "CnnPolicy",
+        vec_env,
+        buffer_size=learning_configs["buffer_size"],  
+        batch_size=256,
+        learning_starts = 100,
+        learning_rate = learning_configs["learning_rate"],
+        verbose=1,
+        policy_kwargs=policy_kwargs,
+        device=device,
+    )
+    timesteps = learning_configs['total_timesteps']
+    model.learn(
+        total_timesteps=timesteps, 
+        callback=callback_max_episodes,
+        progress_bar=True
+    )
 
-        # Save the agent
-        model.save(f"td3-trial{i}-lane-follow")
+    # Save the agent
+    model.save(f"/mnt/persistent/lane-follow-td3/tmp_{sys.argv[1]}/td3-model-trial{sys.argv[1]}_customCNN")
