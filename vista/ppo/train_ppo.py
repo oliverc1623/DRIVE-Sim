@@ -82,22 +82,8 @@ def make_env(rank: int, seed: int = 0):
     return _init
 
 def linear_schedule(initial_value: float) -> Callable[[float], float]:
-    """
-    Linear learning rate schedule.
-
-    :param initial_value: Initial learning rate.
-    :return: schedule that computes
-      current learning rate depending on remaining progress
-    """
     def func(progress_remaining: float) -> float:
-        """
-        Progress will decrease from 1 (beginning) to 0.
-
-        :param progress_remaining:
-        :return: current learning rate
-        """
         return progress_remaining * initial_value
-
     return func
 
 learning_configs = {
@@ -119,12 +105,12 @@ if __name__ == "__main__":
     vec_env = VecFrameStack(vec_env, n_stack=4)
 
     # Create log dir
-    log_dir = f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/"
+    log_dir = f"/mnt/persistent/lane-follow-ppo-vista-reward/tmp_{sys.argv[1]}/"
     os.makedirs(log_dir, exist_ok=True)
     vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
     policy_kwargs = dict(
         features_extractor_class=learning_configs['policy_type'],
-        features_extractor_kwargs=dict(features_dim=512),
+        features_extractor_kwargs=dict(features_dim=128),
     )
     model = PPO(
         "CnnPolicy",
@@ -145,5 +131,5 @@ if __name__ == "__main__":
     )
 
     # Save the agent
-    model.save(f"/mnt/persistent/lane-follow-ppo/tmp_{sys.argv[1]}/ppo-model-trial{sys.argv[1]}_customCNN")
+    model.save(f"/mnt/persistent/lane-follow-ppo-vista-reward/tmp_{sys.argv[1]}/ppo-model-trial{sys.argv[1]}_customCNN")
 
