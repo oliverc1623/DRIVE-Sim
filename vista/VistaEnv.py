@@ -39,6 +39,17 @@ def default_reward_fn(task, agent_id, **kwargs):
     reward = 0 if kwargs['done'] else 1
     return reward, {}
 
+def vista_reward_fn(task, agent_id, prev_yaw, **kwargs):
+    agent = [_a for _a in task.world.agents if _a.id == agent_id][0]
+    road_width = agent.trace.road_width
+    z_lat = road_width / 2
+    q_lat = np.abs(agent.relative_state.x)
+    lane_reward = 1 - (q_lat/z_lat)**2
+    rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], 1)
+    reward = lane_reward + rotation_penalty
+    reward = 0 if kwargs['done'] else reward
+    return reward, {}
+
 def get_rotation_penalty(agent_orientation, target_orientation, max_rotation_penalty):
     orientation_difference = abs(agent_orientation - target_orientation)
     rotation_threshold = 0.01  # Adjust this threshold as needed
@@ -89,7 +100,7 @@ class VistaEnv(gym.Env):
 
     """
     DEFAULT_CONFIG = {
-        'reward_fn': lane_reward_fn,
+        'reward_fn': vista_reward_fn,
         'terminal_condition': default_terminal_condition,
     }
     metadata = {"render_modes": ["rgb_array"]}
