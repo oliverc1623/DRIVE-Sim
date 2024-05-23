@@ -15,6 +15,7 @@ from SeqTransformer import SeqTransformer
 import copy
 import time
 import torch
+from typing import Callable
 
 # SB3
 from stable_baselines3 import SAC
@@ -77,51 +78,59 @@ def make_env(rank: int, seed: int = 47):
                display_config = display_config,
                preprocess_config = preprocess_config,
                sensors_configs = [camera_config])
-        env.reset(seed=seed)
+        env.set_seed(seed + rank)
+        env.reset()
         return env
-    set_random_seed(seed)
+    set_random_seed(seed + rank)
+    time.sleep(1)
     return _init
 
+def linear_schedule(initial_value: float) -> Callable[[float], float]:
+    def func(progress_remaining: float) -> float:
+        return progress_remaining * initial_value
+    return func
+
 learning_configs = {
-    "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 100_000,
+    "policy_type": CustomCNN,
+    "total_timesteps": 500_000,
     "env_id": "VISTA",
-    "learning_rate": 0.0003
+    "learning_rate": linear_schedule(0.0003),
+    "buffer_size": 200_000,
+    "train_freq": (2048, "step")
 }
 
-policy_kwargs = dict(
-    features_extractor_class=CustomCNN,
-)
-
 if __name__ == "__main__":
-    for i in range(2,4):
-        callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=13, verbose=1)
-        torch.cuda.empty_cache()
-        num_cpu = 8
-        vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-        vec_env = VecFrameStack(vec_env, n_stack=4)
-    
-        # Create log dir
-        log_dir = f"tmp_{i}/"
-        os.makedirs(log_dir, exist_ok=True)
-        vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
+    callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
+    torch.cuda.empty_cache()
+    num_cpu = 8
+    vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
+    vec_env = VecFrameStack(vec_env, n_stack=4)
 
-        model = SAC(
-            "CnnPolicy",
-            vec_env,
-            buffer_size=200_000,
-            gradient_steps=-1,
-            learning_rate = learning_configs['learning_rate'],
-            verbose=1,
-            device=device,
-        )
-        timesteps = learning_configs['total_timesteps']
-        model.learn(
-            total_timesteps=timesteps, 
-            callback=callback_max_episodes,
-            progress_bar=True
-        )
+    # Create log dir
+    log_dir = f"/mnt/persistent/lane-follow-sac/tmp_{sys.argv[1]}/"
+    os.makedirs(log_dir, exist_ok=True)
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
+    policy_kwargs = dict(
+        features_extractor_class=learning_configs['policy_type'],
+        features_extractor_kwargs=dict(features_dim=128),
+    )
+    model = SAC(
+        "CnnPolicy",
+        vec_env,
+        buffer_size=learning_configs["buffer_size"],        
+        learning_rate = learning_configs["learning_rate"],
+        gradient_steps=-1,
+        verbose=1,
+        policy_kwargs=policy_kwargs,
+        device=device,
+    )
+    timesteps = learning_configs['total_timesteps']
+    model.learn(
+        total_timesteps=timesteps, 
+        callback=callback_max_episodes,
+        progress_bar=True
+    )
 
-        # Save the agent
-        model.save(f"sac-cnn{i}")
-  
+    # Save the agent
+    model.save(f"/mnt/persistent/lane-follow-sac/tmp_{sys.argv[1]}/sac-model-trial{sys.argv[1]}_customCNN")
+
