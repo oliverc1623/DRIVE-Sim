@@ -40,10 +40,14 @@ def default_terminal_condition(task, agent_id, **kwargs):
         crashed = np.any(overlap > task.config['overlap_threshold'])
         return crashed
 
+    all_dones = False
+    for a in task.world.agents:
+        if a.done:
+            all_dones=True
     out_of_lane = _check_out_of_lane()
     exceed_max_rot = _check_exceed_max_rot()
     crashed = _check_crash()
-    done = out_of_lane or exceed_max_rot or crashed or agent.done
+    done = out_of_lane or exceed_max_rot or crashed or all_dones
     other_info = {
         'done': done,
         'out_of_lane': out_of_lane,
