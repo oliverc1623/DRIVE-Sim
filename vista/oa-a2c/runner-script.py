@@ -28,12 +28,5 @@ def main():
         print("a2c trial 3  failed.")
         return
 
-    try:
-        run_script("train_a2c.py", ["4"])
-        print("a2c trial 4 finished successfully.")
-    except subprocess.CalledProcessError:
-        print("a2c trial 4  failed.")
-        return
-
 if __name__ == "__main__":
     main()

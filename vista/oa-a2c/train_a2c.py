@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))
 from CustomCNN import CustomCNN
 import copy
 import time
+from typing import Callable
 
 from stable_baselines3 import A2C
 from stable_baselines3.common.env_checker import check_env
@@ -16,7 +17,7 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv, VecMonitor, VecFrameStack
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
-
+from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 import torch
 
 device = ("cuda:1" if torch.cuda.is_available() else "cpu")
@@ -87,35 +88,45 @@ def make_env(rank: int, seed: int = 0):
             preprocess_config=preprocess_config,
             task_config=task_config
         )
-        env.reset(seed=seed + rank)
+        env.set_seed(seed + rank)
+        env.reset()
         return env
-    set_random_seed(seed)
+    set_random_seed(seed + rank)
     time.sleep(1)
     return _init
 
+def linear_schedule(initial_value: float) -> Callable[[float], float]:
+    def func(progress_remaining: float) -> float:
+        return progress_remaining * initial_value
+    return func
+
 learning_configs = {
-    "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 100_000,
+    "policy_type": CustomCNN,
+    "total_timesteps": 500_000,
     "env_id": "VISTA",
-    "learning_rate": 0.0003
+    "learning_rate": linear_schedule(0.0001),
+    "n_steps": 2048,
+    "batch_size": 32,
+    "ent_coef": 0.0,
 }
 
 if __name__ == "__main__":
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
     torch.cuda.empty_cache()
-    num_cpu = 8 # Number of processes to use
+    num_cpu = 8 
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    # Frame-stacking with 4 frames
     vec_env = VecFrameStack(vec_env, n_stack=4)
+    
     # Create log dir
     log_dir = f"/mnt/persistent/collision-avoidance-a2c/tmp_{sys.argv[1]}/"
     os.makedirs(log_dir, exist_ok=True)
-    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed'))
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed', 'course_completion_rate'))
     model = A2C(
         "CnnPolicy", 
-        vec_env, 
-        learning_rate=0.0003,
-        verbose=1, 
+        vec_env,
+        learning_rate=learning_configs['learning_rate'],
+        n_steps=learning_configs['n_steps'],
+        verbose=1,
         device=device
     )
     timesteps = learning_configs['total_timesteps']
@@ -125,4 +136,4 @@ if __name__ == "__main__":
         progress_bar=True
     )
     # Save the agent
-    model.save(f"/mnt/persistent/collision-avoidance-a2c/collision-avoidance-a2c-trial{sys.argv[1]}_naturecnn")
+    model.save(f"/mnt/persistent/collision-avoidance-a2c/tmp_{sys.argv[1]}/collision-avoidance-a2c-trial{sys.argv[1]}_naturecnn")
