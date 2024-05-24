@@ -16,6 +16,7 @@ from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 import copy
 import time
 import torch
+import numpy as np
 
 # SB3
 from stable_baselines3 import DDPG
@@ -27,7 +28,7 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import set_random_seed
 from stable_baselines3.common.callbacks import StopTrainingOnMaxEpisodes
 
-device = ("cuda:0" if torch.cuda.is_available() else "cpu")
+device = ("cuda:1" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
@@ -94,21 +95,21 @@ def make_env(rank: int, seed: int = 47):
             preprocess_config=preprocess_config,
             task_config=task_config
         )
-        env.reset(seed=rank+seed)
+        env.set_seed(seed + rank)
+        env.reset()
         return env
-    set_random_seed(seed)
+    set_random_seed(seed + rank)
+    time.sleep(1)
     return _init
 
 learning_configs = {
-    "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 100_000,
+    "policy_type": CustomCNN,
+    "total_timesteps": 500_000,
     "env_id": "VISTA",
-    "learning_rate": 0.0003
+    "learning_rate": 0.01, #linear_schedule(0.01),
+    "buffer_size": 200_000,
+    "train_freq": (2048, "step")
 }
-
-policy_kwargs = dict(
-    features_extractor_class=CustomCNN,
-)
 
 if __name__ == "__main__":
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
@@ -120,23 +121,29 @@ if __name__ == "__main__":
     # Create log dir
     log_dir = f"/mnt/persistent/collision-avoidance-ddpg/tmp_{sys.argv[1]}/"
     os.makedirs(log_dir, exist_ok=True)
-    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done'))
-
-    # The noise objects for DDPG
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'course_completion_rate'))
+    policy_kwargs = dict(
+        features_extractor_class=learning_configs['policy_type'],
+        features_extractor_kwargs=dict(features_dim=128),
+    )
     n_actions = vec_env.action_space.shape[-1]
+    action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.1*np.ones(n_actions))
 
     model = DDPG(
         "CnnPolicy",
         vec_env,
-        buffer_size=200_000,
-        train_freq=1024,
-        learning_rate = learning_configs['learning_rate'],
+        buffer_size=learning_configs["buffer_size"],  
+        batch_size=256,
+        learning_starts = 100,
+        learning_rate = learning_configs["learning_rate"],
         verbose=1,
+        policy_kwargs=policy_kwargs,
         device=device,
     )
     timesteps = learning_configs['total_timesteps']
     model.learn(
         total_timesteps=timesteps, 
+        callback=callback_max_episodes,
         progress_bar=True
     )
 
