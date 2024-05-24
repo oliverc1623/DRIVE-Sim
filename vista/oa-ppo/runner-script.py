@@ -28,12 +28,5 @@ def main():
         print("ppo trial 3  failed.")
         return
 
-    try:
-        run_script("train_ppo.py", ["4"])
-        print("ppo trial 4 finished successfully.")
-    except subprocess.CalledProcessError:
-        print("ppo trial 4  failed.")
-        return
-
 if __name__ == "__main__":
     main()
