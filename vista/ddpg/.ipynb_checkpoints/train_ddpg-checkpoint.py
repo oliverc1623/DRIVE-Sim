@@ -4,22 +4,22 @@ os.environ['PYOPENGL_PLATFORM'] = 'egl'
 
 # local imports
 import sys
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('VistaMAEnv.py'))))
-from VistaMAEnv import VistaMAEnv
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('VistaEnv.py'))))
+from VistaEnv import VistaEnv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))))
 from CustomCNN import CustomCNN
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('SeqTransformer.py'))))
 from SeqTransformer import SeqTransformer
+from typing import Callable
 
 # Standard Torch
 import copy
 import time
 import torch
 import numpy as np
-from typing import Callable
 
 # SB3
-from stable_baselines3 import TD3
+from stable_baselines3 import DDPG
 from stable_baselines3.common.noise import NormalActionNoise, OrnsteinUhlenbeckActionNoise
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
@@ -32,7 +32,7 @@ device = ("cuda:1" if torch.cuda.is_available() else "cpu")
 device = torch.device(device)
 print(f"Using {device} device")
 
-def make_env(rank: int, seed: int = 0):
+def make_env(rank: int, seed: int = 47):
     """
     Utility function for multiprocessed env.
 
@@ -54,47 +54,32 @@ def make_env(rank: int, seed: int = 0):
             steering_ratio=14.7,
             lookahead_road=True,
         )
-        sensors_config = [
-            dict(
-                type='camera',
-                # camera params
-                name='camera_front',
-                size=(400, 640), # for lighter cnn 
-                # rendering params
-                use_lighting=False,
-            )
-        ]
-        task_config=dict(n_agents=2,
-                         mesh_dir="../carpack01",
-                         init_dist_range=[30.0, 35.0],
-                         init_last_noise_range=[0.0, 0.0])
-        display_config = dict(road_buffer_size=1000, )
-        preprocess_config = {
-            "crop_roi": True,
-            "resize": True,
-            "grayscale": True,
-            "binary": False,
-            "seq": False
-        }
+        camera_config = {'type': 'camera',
+                         'name': 'camera_front',
+                         'rig_path': './RIG.xml',
+                         'optical_flow_root': '../data_prep/Super-SloMo/slowmo',
+                         'size': (400, 640)}
         ego_car_config = copy.deepcopy(car_config)
         ego_car_config['lookahead_road'] = True
         trace_root = "../vista_traces"
         trace_path = [
-            "20210726-154641_lexus_devens_center",
-            "20210726-155941_lexus_devens_center_reverse",
-            "20210726-184624_lexus_devens_center",
-            "20210726-184956_lexus_devens_center_reverse",
+            "20210726-154641_lexus_devens_center", 
+            "20210726-155941_lexus_devens_center_reverse", 
+            "20210726-184624_lexus_devens_center", 
+            "20210726-184956_lexus_devens_center_reverse", 
         ]
         trace_paths = [os.path.join(trace_root, p) for p in trace_path]
-        env = VistaMAEnv(
-            trace_paths=trace_paths,
-            trace_config=trace_config,
-            car_configs=[car_config] * task_config['n_agents'],
-            sensors_configs=[sensors_config] + [[]] *
-            (task_config['n_agents'] - 1),
-            preprocess_config=preprocess_config,
-            task_config=task_config
-        )
+        display_config = dict(road_buffer_size=1000, )
+        preprocess_config = {"crop_roi": True,
+             "resize": True,
+             "grayscale": True,
+             "binary": False}
+        env = VistaEnv(trace_paths = trace_paths, 
+               trace_config = trace_config,
+               car_config = car_config,
+               display_config = display_config,
+               preprocess_config = preprocess_config,
+               sensors_configs = [camera_config])
         env.set_seed(seed + rank)
         env.reset()
         return env
@@ -102,19 +87,18 @@ def make_env(rank: int, seed: int = 0):
     time.sleep(1)
     return _init
 
-def linear_schedule(initial_value: float) -> Callable[[float], float]:
-    def func(progress_remaining: float) -> float:
-        return progress_remaining * initial_value
-    return func
-
 learning_configs = {
     "policy_type": CustomCNN,
     "total_timesteps": 500_000,
     "env_id": "VISTA",
-    "learning_rate": 0.01, #linear_schedule(0.01),
+    "learning_rate": 0.01, 
     "buffer_size": 200_000,
-    "train_freq": (2048, "step")
 }
+
+def linear_schedule(initial_value: float) -> Callable[[float], float]:
+    def func(progress_remaining: float) -> float:
+        return progress_remaining * initial_value
+    return func
 
 if __name__ == "__main__":
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
@@ -124,33 +108,32 @@ if __name__ == "__main__":
     vec_env = VecFrameStack(vec_env, n_stack=4)
 
     # Create log dir
-    log_dir = f"/mnt/persistent/collision-avoidance-td3/tmp_{sys.argv[1]}/"
+    log_dir = f"/mnt/persistent/lane-follow-ddpg/tmp_{sys.argv[1]}/"
     os.makedirs(log_dir, exist_ok=True)
-    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed'))
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'agent_done', 'course_completion_rate'))
     policy_kwargs = dict(
         features_extractor_class=learning_configs['policy_type'],
         features_extractor_kwargs=dict(features_dim=128),
     )
     
-    # The noise objects for TD3
+    # The noise objects for DDPG
     n_actions = vec_env.action_space.shape[-1]
     action_noise = OrnsteinUhlenbeckActionNoise(mean=np.zeros(n_actions), sigma=0.1*np.ones(n_actions))
-    
-    model = TD3(
+
+    model = DDPG(
         "CnnPolicy",
         vec_env,
-        buffer_size=learning_configs["buffer_size"],  
-        batch_size=256,
-        learning_starts = 100,
-        learning_rate = learning_configs["learning_rate"],
+        buffer_size=learning_configs["buffer_size"], 
+        learning_rate = learning_configs['learning_rate'],
         verbose=1,
         policy_kwargs=policy_kwargs,
         device=device,
     )
-    timesteps = learning_configs['total_timesteps']
     model.learn(
-        total_timesteps=timesteps, 
+        total_timesteps=learning_configs['total_timesteps'], 
+        callback=callback_max_episodes,
         progress_bar=True
     )
+
     # Save the agent
-    model.save(f"/mnt/persistent/collision-avoidance-td3/tmp_{sys.argv[1]}/collision-avoidance-td3_trial{sys.argv[1]}_naturecnn")
+    model.save(f"/mnt/persistent/lane-follow-td3/tmp_{sys.argv[1]}/ddpg-model-trial{sys.argv[1]}_customCNN")
