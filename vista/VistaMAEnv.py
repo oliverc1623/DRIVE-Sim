@@ -74,6 +74,9 @@ def default_reward_fn(task, agent_id, prev_yaw, **kwargs):
     # compute rotation penalty
     rotation_penalty = get_rotation_penalty(prev_yaw, agent.ego_dynamics.numpy()[2], 1)
 
+    # compute speed reward
+    speed_reward = 1 - abs(agent.speed - agent.human_speed)/15
+
     # collision avoidance reward
     agent2poly = lambda _x: misc.agent2poly(
         _x, ref_dynamics=agent.human_dynamics)
@@ -81,13 +84,13 @@ def default_reward_fn(task, agent_id, prev_yaw, **kwargs):
     other_polys = list(map(agent2poly, other_agents))
     overlap = (compute_overlap(poly, other_polys) / poly.area) * 1    
 
-    reward = lane_reward + rotation_penalty - overlap[0]
+    reward = lane_reward + rotation_penalty + speed_reward - overlap[0]
     reward = -1 if kwargs['done'] else reward
     return reward, {}
 
 def initial_dynamics_fn(x, y, yaw, steering, speed):
-    x_perturbation = 1
-    yaw_perturbation = .001
+    x_perturbation = 1.5
+    yaw_perturbation = .1
     return [
         x + random.uniform(-x_perturbation,x_perturbation),
         y,
@@ -95,7 +98,6 @@ def initial_dynamics_fn(x, y, yaw, steering, speed):
         steering,
         speed,
     ]
-
 
 class VistaMAEnv(gym.Env):
     """ This class builds a simple environment with multiple cars in the scene, which
@@ -189,15 +191,33 @@ class VistaMAEnv(gym.Env):
             i1, j1, i2, j2 = self._world.agents[0].sensors[0].camera_param.get_roi()
             self._width, self._height = i2-i1, j2-j1
         if self._preprocess_config['resize']:
-            self._width = 128
-            self._height = 128
+            self._width = 84
+            self._height = 84
         obs_shape = (3, self._width, self._height)
         if self._preprocess_config['grayscale']:
             obs_shape = (1, self._width, self._height)
         else:
             obs_shape = (3, self._width, self._height)
-        self.observation_space = spaces.Box(low=0, high=255,shape=obs_shape,dtype=np.uint8)
-        self.action_space = spaces.Box(low=np.array([-1/5.0, 1.0]), high=np.array([1/5.0, 40.0]), shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(
+            low=0, 
+            high=255,
+            shape=obs_shape,
+            dtype=np.uint8
+        )
+        self.action_space = spaces.Box(
+            low=np.array([-0.75, 1.0]), 
+            high=np.array([0.75, 15.0]), 
+            shape=(2,), 
+            dtype=np.float32
+        )
+
+    def _get_course_completion_rate(self):
+        cur_frame = self._world.agents[0].frame_index
+        trace_index = self._world.agents[0].trace_index
+        num_frames = self._world.traces[trace_index].num_of_frames
+        frames_left = num_frames - cur_frame
+        course_completion_rate = (self._distance/frames_left)*100
+        return round(course_completion_rate, 4)
 
     def _preprocess(self, image, seq=False):
         # grayscale
@@ -209,7 +229,7 @@ class VistaMAEnv(gym.Env):
         image = image[i1:i2, j1:j2]
         # resize
         if self._preprocess_config['resize']:
-            image = resize(image, (128, 128), anti_aliasing=True)
+            image = resize(image, (self._width, self._height), anti_aliasing=True)
             image = (image*255).astype('uint8')
         # binarize
         if self._preprocess_config['binary']:
@@ -270,6 +290,7 @@ class VistaMAEnv(gym.Env):
         info['distance'] = self._distance
         info['agent_done'] = False
         info['crashed'] = False
+        info['course_completion_rate'] = 0.0
 
         # Get observation
         self._sensor_capture()
@@ -307,7 +328,7 @@ class VistaMAEnv(gym.Env):
                 botaction = np.array([0.0, 0.0])
                 agent.step_dynamics(botaction, dt=dt)
 
-        action = np.array([action[0], agent.human_speed])
+        action = np.array([action[0], action[1]])
         self.ego_agent.step_dynamics(action, dt=dt)
         self.ego_agent.step_sensors()
 
@@ -347,8 +368,9 @@ class VistaMAEnv(gym.Env):
         info['agent_done'] = infos_from_terminal_condition[ego_id]['agent_done']
         info['crashed'] = infos_from_terminal_condition[ego_id]['crashed']
         info['distance'] = self._distance
+        info['course_completion_rate'] = self._get_course_completion_rate()
         truncated=False
-        if self._distance > 100:
+        if np.floor(info['course_completion_rate']) == 100.0:
             truncated = True
         return observation, rewards[self.ego_agent.id], dones[self.ego_agent.id], truncated, info
 
