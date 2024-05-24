@@ -9,6 +9,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath('CustomCNN.py'))
 from CustomCNN import CustomCNN
 import copy
 import time
+from typing import Callable
 
 from stable_baselines3 import SAC
 from stable_baselines3.common.env_checker import check_env
@@ -90,40 +91,52 @@ def make_env(rank: int, seed: int = 0):
             preprocess_config=preprocess_config,
             task_config=task_config
         )
-        env.reset(seed=seed + rank)
+        env.set_seed(seed + rank)
+        env.reset()
         return env
-    set_random_seed(seed)
+    set_random_seed(seed + rank)
     time.sleep(1)
     return _init
 
+def linear_schedule(initial_value: float) -> Callable[[float], float]:
+    def func(progress_remaining: float) -> float:
+        return progress_remaining * initial_value
+    return func
+
 learning_configs = {
-    "policy_type": "CustomCnnPolicy",
-    "total_timesteps": 100_000,
+    "policy_type": CustomCNN,
+    "total_timesteps": 500_000,
     "env_id": "VISTA",
-    "learning_rate": 0.0003
+    "learning_rate": linear_schedule(0.0003),
+    "buffer_size": 200_000,
+    "train_freq": (2048, "step")
 }
 
 if __name__ == "__main__":
     callback_max_episodes = StopTrainingOnMaxEpisodes(max_episodes=25, verbose=1)
     torch.cuda.empty_cache()
-    num_cpu = 8 # Number of processes to use
+    num_cpu = 8
     vec_env = SubprocVecEnv([make_env(i) for i in range(num_cpu)])
-    # Frame-stacking with 4 frames
     vec_env = VecFrameStack(vec_env, n_stack=4)
 
     # Create log dir
     log_dir = f"/mnt/persistent/collision-avoidance-sac/tmp_{sys.argv[1]}/"
     os.makedirs(log_dir, exist_ok=True)
-    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed'))
-
+    vec_env = VecMonitor(vec_env, log_dir, ('out_of_lane', 'exceed_max_rot', 'distance', 'agent_done', 'crashed', 'course_completion_rate'))
+    policy_kwargs = dict(
+        features_extractor_class=learning_configs['policy_type'],
+        features_extractor_kwargs=dict(features_dim=128),
+    )
+    
     model = SAC(
         "CnnPolicy",
         vec_env, 
-        buffer_size=200_000,
-        learning_rate=0.0003,
+        buffer_size=learning_configs["buffer_size"],        
+        learning_rate = learning_configs["learning_rate"],
         gradient_steps=-1,
-        verbose=1, 
-        device=device
+        verbose=1,
+        policy_kwargs=policy_kwargs,
+        device=device,
     )
     timesteps = learning_configs['total_timesteps']
     model.learn(
@@ -133,4 +146,4 @@ if __name__ == "__main__":
     )
 
     # Save the agent
-    model.save(f"/mnt/persistent/collision-avoidance-sac/collision-avoidance-sac_trial{sys.argv[1]}_naturecnn")
+    model.save(f"/mnt/persistent/collision-avoidance-sac/tmp_{sys.argv[1]}/collision-avoidance-sac_trial{sys.argv[1]}_naturecnn")
